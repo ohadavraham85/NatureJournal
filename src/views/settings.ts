@@ -2,6 +2,8 @@
  * browser to keep the data persistent. */
 
 import { db } from '../db/database';
+import { CATEGORIES } from '../data/categories';
+import { catalogCounts, downloadCatalog, getCatalogMeta, isCatalogDownloading, type CatalogProgress } from '../lib/catalog';
 import { openWhatsNew } from '../lib/whats-new';
 import { icon } from '../lib/icons';
 import { toast } from '../lib/ui';
@@ -14,6 +16,7 @@ export function init(el: HTMLElement): void {
     const t = e.target as HTMLElement;
     if (t.closest('#s-whats-new')) openWhatsNew();
     else if (t.closest('#s-persist')) void requestPersist();
+    else if (t.closest('#s-catalog')) void updateCatalog();
   });
 }
 
@@ -21,6 +24,27 @@ function fmtBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+async function updateCatalog(): Promise<void> {
+  if (!navigator.onLine) { toast('צריך קליטה כדי לעדכן את המאגר', true); return; }
+  const btn = root.querySelector<HTMLButtonElement>('#s-catalog');
+  if (btn) { btn.disabled = true; btn.textContent = 'מעדכן...'; }
+  let failed = 0;
+  const progress: CatalogProgress = (cat, state, count) => {
+    const cell = root.querySelector<HTMLElement>(`[data-cat-count="${cat}"]`);
+    if (state === 'error') failed++;
+    if (cell) cell.textContent = state === 'error' ? 'נכשל' : state === 'loading' ? `מוריד... ${count || ''}` : `${count} מינים`;
+  };
+  await downloadCatalog(undefined, progress);
+  toast(failed ? `העדכון נכשל ב-${failed} קטגוריות — אפשר לנסות שוב` : 'מאגר המינים עודכן', failed > 0);
+  await activate();
+}
+
+function fmtDay(iso: string | undefined): string {
+  if (!iso) return 'לא הורד';
+  const d = new Date(iso);
+  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
 }
 
 async function requestPersist(): Promise<void> {
@@ -33,6 +57,8 @@ export async function activate(): Promise<void> {
   const [obsCount, photoCount] = await Promise.all([db.observations.count(), db.media.count()]);
   const est = await navigator.storage?.estimate?.().catch(() => undefined);
   const persisted = await navigator.storage?.persisted?.().catch(() => false);
+  const [counts, meta] = await Promise.all([catalogCounts(), getCatalogMeta()]);
+  const updatedTimes = Object.values(meta.updated).filter(Boolean).sort() as string[];
   root.innerHTML = `
     <h2>הגדרות</h2>
     <section class="card-section">
@@ -46,6 +72,15 @@ export async function activate(): Promise<void> {
       ${persisted ? '' : `<p class="hint">בלי שמירה קבועה הדפדפן עלול למחוק נתונים כשהמכשיר מתמלא.</p>
         <button type="button" class="btn btn-soft" id="s-persist">${icon('check', 18)} הפעלת שמירה קבועה</button>`}
       <p class="hint">כל הדיווחים נשמרים רק במכשיר הזה. גיבוי וסנכרון בין מכשירים יגיעו בהמשך.</p>
+    </section>
+    <section class="card-section">
+      <h3>מאגר המינים</h3>
+      <p class="hint">רשימת המינים שנצפו בישראל, עם שמות בעברית, מ-iNaturalist. משמשת להשלמת שמות בדיווח ולטאב "מינים", ועובדת גם בלי קליטה. מתעדכנת לבד כל חודשיים.</p>
+      <dl class="kv">
+        ${CATEGORIES.map((c) => `<div><dt>${c.label}</dt><dd data-cat-count="${c.id}">${counts.get(c.id) ? `${counts.get(c.id)} מינים` : 'לא הורד'}</dd></div>`).join('')}
+        <div><dt>עדכון אחרון</dt><dd>${fmtDay(updatedTimes[0])}</dd></div>
+      </dl>
+      <button type="button" class="btn btn-soft" id="s-catalog"${isCatalogDownloading() ? ' disabled' : ''}>${icon('refresh', 18)} ${isCatalogDownloading() ? 'מוריד...' : 'עדכון המאגר עכשיו'}</button>
     </section>
     <section class="card-section">
       <h3>אודות</h3>

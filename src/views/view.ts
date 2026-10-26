@@ -3,6 +3,10 @@
 export interface ViewParams {
   /** form: the report being edited (absent = new report). */
   editId?: string;
+  /** form: a new report pre-filled from the species catalog. */
+  prefillCategory?: string;
+  prefillSpecies?: string;
+  prefillTaxonId?: number;
   /** detail: the report to show. */
   viewId?: string;
   /** journal: pre-applied category filter / search text. */

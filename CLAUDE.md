@@ -20,6 +20,11 @@
 - Design: olive #4E5D2A (top bar, primary), earth #8A5A2B (+ button), background
   #F4F1E8, cards #FFFFFF, text #2B2A24, font Rubik. Category colors and icons
   live in `src/data/categories.ts`. UI text is Hebrew, RTL.
+- Species catalog: `src/lib/catalog.ts` downloads, on the user's device, the
+  species observed in Israel per category from the iNaturalist API (Hebrew
+  names, `locale=he`) into the Dexie `taxa` table; queries live in
+  `src/data/catalog-sources.ts`. The cloud sandbox can't reach iNaturalist or
+  Wikipedia — test with mocked routes in Playwright.
 - Roadmap: stage 1 (report form, journal, offline PWA) is done; next — map +
   gallery (Leaflet), export/backup, sync between the user's devices (Firebase,
   as in Birds), maybe sharing later.

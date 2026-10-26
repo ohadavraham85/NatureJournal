@@ -33,6 +33,18 @@ registerRoute(
   }),
 );
 
+// Species photos from the iNaturalist catalog — shown in the species tab.
+registerRoute(
+  ({ url }) => url.hostname === 'inaturalist-open-data.s3.amazonaws.com' || url.hostname === 'static.inaturalist.org',
+  new CacheFirst({
+    cacheName: 'species-photos',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 1500, maxAgeSeconds: 180 * 24 * 60 * 60 }),
+    ],
+  }),
+);
+
 // OpenStreetMap tiles — cache-first with a bounded, expiring cache.
 registerRoute(
   ({ url }) => url.hostname.endsWith('tile.openstreetmap.org'),
