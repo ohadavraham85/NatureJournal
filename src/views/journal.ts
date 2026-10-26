@@ -12,7 +12,7 @@ import { qs } from '../lib/dom';
 import { navigate } from '../lib/nav';
 import type { Observation } from '../types';
 import type { ViewParams } from './view';
-import { getMe, getMembers, onMembers, reporterName } from '../sync/state';
+import { getMe, getMembers, isMe, onMembers, reporterName, type Me } from '../sync/state';
 import { escapeHtml } from '../lib/escape';
 
 let root: HTMLElement;
@@ -20,6 +20,7 @@ let filterCat = '';
 /** '' = everyone; otherwise a reporter id. */
 let filterReporter = '';
 let meId = '';
+let me: Me = { id: '', name: '' };
 let search = '';
 let all: Observation[] = [];
 const LAYOUT_KEY = 'journalLayout';
@@ -99,7 +100,8 @@ export function setParams(params: ViewParams): void {
 
 export async function activate(): Promise<void> {
   qs<HTMLInputElement>(root, '#j-search').value = search;
-  [all, meId] = await Promise.all([listObservations(), getMe().then((m) => m.id)]);
+  [all, me] = await Promise.all([listObservations(), getMe()]);
+  meId = me.id;
   render();
 }
 
@@ -132,8 +134,10 @@ function render(): void {
   const q = search.trim();
   // Reporter chips appear once more than one person reports into this journal.
   const reporters = new Map<string, string>();
-  for (const m of getMembers()) reporters.set(m.id, m.name);
-  for (const o of all) if (o.reporterId && !reporters.has(o.reporterId)) reporters.set(o.reporterId, reporterName(o));
+  // Me under every id/name of mine counts once, as "אני".
+  for (const m of getMembers()) if (!isMe(m.id, me)) reporters.set(m.id, m.name);
+  for (const o of all) if (o.reporterId && !isMe(o.reporterId, me) && !reporters.has(o.reporterId)) reporters.set(o.reporterId, reporterName(o));
+  reporters.set(meId, me.name);
   const multi = reporters.size > 1;
   const repBox = qs(root, '#j-reporters');
   repBox.hidden = !multi;
@@ -141,7 +145,8 @@ function render(): void {
     repBox.innerHTML = [['', 'כל המדווחים'], [meId, 'אני'], ...[...reporters].filter(([id]) => id !== meId)]
       .map(([id, name]) => `<button type="button" class="filter-chip reporter-chip" data-reporter="${escapeHtml(id!)}" aria-pressed="${id === filterReporter}">${escapeHtml(name || 'ללא שם')}</button>`).join('');
   } else filterReporter = '';
-  const byReporter = (o: Observation): boolean => !filterReporter || (o.reporterId ?? meId) === filterReporter;
+  const byReporter = (o: Observation): boolean =>
+    !filterReporter || (filterReporter === meId ? isMe(o.reporterId, me) : o.reporterId === filterReporter);
   const shown = all.filter((o) => byReporter(o) && (!filterCat || o.category === filterCat) && matches(o, q));
   qs(root, '#j-count').textContent = shown.length === all.length
     ? `${all.length} דיווחים`
@@ -149,7 +154,7 @@ function render(): void {
 
   const grid = qs(root, '#j-grid');
   grid.className = layout === 'grid' ? 'obs-grid' : 'obs-strips';
-  grid.innerHTML = shown.map((o) => (layout === 'grid' ? obsCardHtml : obsStripHtml)(o, multi && !!o.reporterId && o.reporterId !== meId)).join('');
+  grid.innerHTML = shown.map((o) => (layout === 'grid' ? obsCardHtml : obsStripHtml)(o, multi && !isMe(o.reporterId, me))).join('');
   hydrateThumbs(grid);
 
   const empty = qs(root, '#j-empty');

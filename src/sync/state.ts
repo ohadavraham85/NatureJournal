@@ -7,7 +7,13 @@
 import { getSetting, setSetting } from '../db/repository';
 import type { Member, Observation } from '../types';
 
-export interface Me { id: string; name: string }
+export interface Me {
+  id: string;
+  name: string;
+  /** Ids this person had before (e.g. this device's own id before joining a
+   * journal as an existing member) — reports under them are mine too. */
+  aliases?: string[];
+}
 
 const ME_KEY = 'me';
 const CODE_KEY = 'syncCode';
@@ -35,9 +41,21 @@ export async function setMe(me: Me): Promise<void> {
   await setSetting(ME_KEY, me);
 }
 
-/** Reports by someone else in a shared journal are read-only here. */
+/** Reports by someone else in a shared journal are read-only here. The
+ * same person on another device counts as me — by id, by a former id of
+ * mine, or by the same name (joining twice under one name). */
 export function canEdit(o: Observation, me: Me): boolean {
-  return !o.reporterId || o.reporterId === me.id;
+  if (!o.reporterId || o.reporterId === me.id || me.aliases?.includes(o.reporterId)) return true;
+  const mine = me.name.trim().toLowerCase();
+  return !!mine && reporterName(o).trim().toLowerCase() === mine;
+}
+
+/** Whether a reporter id is me (for filters and "(אני)" labels). */
+export function isMe(reporterId: string | undefined, me: Me): boolean {
+  if (!reporterId || reporterId === me.id || me.aliases?.includes(reporterId)) return true;
+  const mine = me.name.trim().toLowerCase();
+  const theirs = members.find((m) => m.id === reporterId)?.name.trim().toLowerCase();
+  return !!mine && theirs === mine;
 }
 
 /* ---------- code ---------- */
