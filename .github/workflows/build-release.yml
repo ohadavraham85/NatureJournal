@@ -1,0 +1,128 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # Reserves the version number by tagging+pushing it before the build
+      # starts, retrying against a fresh tag list if a concurrent run already
+      # claimed it (same scheme as the Birds journal).
+      - name: Claim next version
+        id: ver
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in $(seq 1 8); do
+            git fetch origin --tags --force --quiet
+            latest=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            if [ -z "$latest" ]; then
+              VER="1.0.0"
+            else
+              IFS=. read -r major minor patch <<< "${latest#v}"
+              VER="$major.$minor.$((patch + 1))"
+            fi
+            git tag "v$VER"
+            if git push origin "v$VER"; then
+              echo "Claimed v$VER (previous: ${latest:-none})"
+              echo "version=$VER" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "v$VER was claimed by a concurrent run — retrying with a fresh version…"
+            git tag -d "v$VER"
+            sleep $((RANDOM % 4 + 1))
+          done
+          echo "::error::Could not claim a unique version tag after 8 attempts"
+          exit 1
+
+      - name: Build (Vite + PWA)
+        env:
+          GITHUB_PAGES: '1'
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: npx vite build
+
+      - name: Stamp version + package
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          echo "{\"version\": \"$VER\", \"builtAt\": \"$(date -u +%FT%TZ)\", \"commit\": \"$GITHUB_SHA\"}" > dist/version.json
+          cd dist
+          zip -qr "../nature-journal-v$VER.zip" .
+
+      - name: Upload Pages build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          NOTES=$(printf 'בנייה אוטומטית (Vite + TypeScript, PWA) מ-commit %s.\n\nהאפליקציה מותקנת מ-GitHub Pages; ה-ZIP הוא ה-build הסטטי (dist).' "${GITHUB_SHA::7}")
+          gh release create "v$VER" "nature-journal-v$VER.zip" \
+            --title "יומן טבע v$VER" \
+            --notes "$NOTES"
+
+  deploy-pages:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

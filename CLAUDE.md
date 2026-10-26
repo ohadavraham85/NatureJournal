@@ -1,0 +1,25 @@
+# NatureJournal (יומן טבע) — notes for Claude
+
+- **Talk to the user in Hebrew only.**
+- **Every user-visible change adds a "מה חדש" entry** at the top of
+  `src/data/changelog.ts` (next `id`, today's date, a short Hebrew title and
+  1–3 Hebrew bullet points written for the user, not for developers). Leave
+  `version` out — CI assigns the release number at merge time.
+- Run `npm run build` (includes `tsc`) before pushing.
+- **Every change is merged into `main` without asking** — open a PR from the
+  working branch and merge it. Pushing to `main` builds, tags the next
+  version (`v1.0.x`) and deploys to GitHub Pages
+  (`.github/workflows/build-release.yml`).
+- **After merging, check that the "Build & Release" run passed** and tell the
+  user which version went live.
+- Stack: TypeScript + Vite + vite-plugin-pwa (`src/sw.ts`, injectManifest),
+  Dexie/IndexedDB (`src/db/`), all data local and offline-first. Plain DOM
+  views in `src/views/`, routed by `src/main.ts`. Many modules are ported from
+  the Birds journal (github.com/ohadavraham85/Birds) — check there before
+  writing something it already has.
+- Design: olive #4E5D2A (top bar, primary), earth #8A5A2B (+ button), background
+  #F4F1E8, cards #FFFFFF, text #2B2A24, font Rubik. Category colors and icons
+  live in `src/data/categories.ts`. UI text is Hebrew, RTL.
+- Roadmap: stage 1 (report form, journal, offline PWA) is done; next — map +
+  gallery (Leaflet), export/backup, sync between the user's devices (Firebase,
+  as in Birds), maybe sharing later.
