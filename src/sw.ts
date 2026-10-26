@@ -58,14 +58,15 @@ registerRoute(
   }),
 );
 
-// OpenStreetMap tiles — cache-first with a bounded, expiring cache.
+// Map tiles (OpenStreetMap + Esri satellite) — cache-first, bounded and expiring,
+// so places already viewed still show with no reception.
 registerRoute(
-  ({ url }) => url.hostname.endsWith('tile.openstreetmap.org'),
+  ({ url }) => url.hostname.endsWith('tile.openstreetmap.org') || (url.hostname === 'server.arcgisonline.com' && url.pathname.includes('/tile/')),
   new CacheFirst({
     cacheName: 'osm-tiles',
     plugins: [
       new CacheableResponsePlugin({ statuses: [0, 200] }),
-      new ExpirationPlugin({ maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 }),
+      new ExpirationPlugin({ maxEntries: 2000, maxAgeSeconds: 60 * 24 * 60 * 60 }),
     ],
   }),
 );
