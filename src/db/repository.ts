@@ -12,6 +12,11 @@ export function onDataChanged(fn: Listener): () => void {
   return () => listeners.delete(fn);
 }
 
+/** For bulk writes made outside this module (e.g. restoring a backup). */
+export function notifyDataChanged(): void {
+  emit();
+}
+
 function emit(): void {
   for (const fn of listeners) fn();
 }
