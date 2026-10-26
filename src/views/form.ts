@@ -40,6 +40,8 @@ let myPlaces: string[] = [];
 /** The whole species catalog (downloaded from iNaturalist). */
 let catalog: Taxon[] = [];
 let saving = false;
+/** The species card whose "add photo" button opened the file picker. */
+let mediaTarget = '';
 /** Bumped on every reset so a slow GPS fix from an earlier form session is ignored. */
 let session = 0;
 
@@ -88,29 +90,20 @@ export function init(el: HTMLElement): void {
         </div>
       </section>
 
-      <section class="form-section">
-        <div class="photo-strip" id="f-photos"></div>
-        <div class="photo-pick" id="f-photo-pick">
-          <button type="button" class="photo-pick-main" id="f-pick">
-            ${icon('camera', 36, 1.6)}
-            <strong>צילום או בחירת תמונה / סרטון</strong>
-            <span>התאריך והמיקום יילקחו מהתמונה</span>
-          </button>
-        </div>
-        <input type="file" id="f-file" accept="image/*,video/*" multiple hidden>
-        <input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
-        <input type="file" id="f-video" accept="video/*" capture="environment" hidden>
-      </section>
+      <input type="file" id="f-file" accept="image/*,video/*" multiple hidden>
+      <input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
+      <input type="file" id="f-video" accept="video/*" capture="environment" hidden>
 
       <section class="form-section">
         <h3 class="form-section-title">${icon('leaf', 18)} מה ראית</h3>
+        <p class="hint form-hint">לכל מין אפשר להוסיף תמונות, סרטונים והערה. התאריך והמיקום יילקחו מהתמונה הראשונה.</p>
         <div class="entries" id="f-entries"></div>
         <button type="button" class="btn btn-soft add-entry" id="f-add-entry">${icon('plus', 18)} הוספת מין נוסף לתצפית</button>
       </section>
 
-      <div class="field">
-        <label for="f-note">הערה</label>
-        <textarea id="f-note" rows="3" placeholder="מה ראית, התנהגות, סביבה..."></textarea>
+      <div class="field" id="f-note-field" hidden>
+        <label for="f-note">הערה כללית</label>
+        <textarea id="f-note" rows="3"></textarea>
       </div>
 
       <div class="form-actions">
@@ -124,7 +117,6 @@ export function init(el: HTMLElement): void {
   const cameraInput = qs<HTMLInputElement>(root, '#f-camera');
   const videoInput = qs<HTMLInputElement>(root, '#f-video');
 
-  qs(root, '#f-pick').addEventListener('click', () => fileInput.click());
   for (const inp of [fileInput, cameraInput, videoInput]) {
     inp.addEventListener('change', () => {
       const files = Array.from(inp.files ?? []);
@@ -147,7 +139,17 @@ export function init(el: HTMLElement): void {
       paintEntryCategory(card, entry);
     } else if (t.closest('[data-minus]')) setQty(entry, card, entry.quantity - 1);
     else if (t.closest('[data-plus]')) setQty(entry, card, entry.quantity + 1);
-    else if (t.closest('[data-remove-entry]')) {
+    else if (t.closest('[data-add-media]')) {
+      mediaTarget = entry.id;
+      const kind = t.closest<HTMLElement>('[data-add-media]')!.dataset.addMedia;
+      (kind === 'camera' ? cameraInput : kind === 'video' ? videoInput : fileInput).click();
+    } else if (t.closest('[data-remove-media]')) {
+      const id = t.closest<HTMLElement>('[data-remove-media]')!.dataset.removeMedia!;
+      entry.mediaIds = (entry.mediaIds ?? []).filter((x) => x !== id);
+      draft.photoIds = draft.photoIds.filter((x) => x !== id);
+      draft.videoIds = (draft.videoIds ?? []).filter((x) => x !== id);
+      paintEntryMedia(card, entry);
+    } else if (t.closest('[data-remove-entry]')) {
       draft.entries = draft.entries.filter((x) => x !== entry);
       renderEntries();
     }
@@ -158,6 +160,7 @@ export function init(el: HTMLElement): void {
     const entry = card && draft.entries.find((x) => x.id === card.dataset.entry);
     if (!card || !entry) return;
     if (t.classList.contains('e-species')) { entry.species = t.value; unlinkTaxon(entry, card); }
+    else if (t.classList.contains('e-note')) entry.note = t.value;
   });
   entriesBox.addEventListener('change', (e) => {
     const t = e.target as HTMLInputElement;
@@ -199,20 +202,6 @@ export function init(el: HTMLElement): void {
     draft.note = (e.target as HTMLTextAreaElement).value;
   });
 
-  qs(root, '#f-photos').addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    const remove = target.closest<HTMLElement>('[data-remove]');
-    if (remove) {
-      draft.photoIds = draft.photoIds.filter((id) => id !== remove.dataset.remove);
-      draft.videoIds = (draft.videoIds ?? []).filter((id) => id !== remove.dataset.remove);
-      paintPhotos();
-      return;
-    }
-    if (target.closest('.photo-add')) fileInput.click();
-    else if (target.closest('.photo-add-camera')) cameraInput.click();
-    else if (target.closest('.photo-add-video')) videoInput.click();
-  });
-
   form.addEventListener('submit', (e) => { e.preventDefault(); void save(); });
   qs(root, '#f-cancel').addEventListener('click', () => void cancel());
 }
@@ -231,8 +220,13 @@ export async function activate(): Promise<void> {
   draft = existing
     ? { ...existing, photoIds: [...existing.photoIds], videoIds: [...(existing.videoIds ?? [])], entries: existing.entries.map((e) => ({ ...e })) }
     : blankDraft();
-  if (existing) placeTouched = true;
-  else if (prefill.prefillCategory) {
+  if (existing) {
+    placeTouched = true;
+    // Media from before per-species photos goes to the first species.
+    const assigned = new Set(draft.entries.flatMap((e) => e.mediaIds ?? []));
+    const loose = draft.photoIds.filter((id) => !assigned.has(id));
+    if (loose.length && draft.entries[0]) draft.entries[0].mediaIds = [...loose, ...(draft.entries[0].mediaIds ?? [])];
+  } else if (prefill.prefillCategory) {
     const first = draft.entries[0]!;
     first.category = prefill.prefillCategory as CategoryId;
     first.species = prefill.prefillSpecies ?? '';
@@ -243,8 +237,8 @@ export async function activate(): Promise<void> {
   document.getElementById('topbar-title')!.textContent = existing ? 'עריכת דיווח' : 'דיווח חדש';
   qs<HTMLInputElement>(root, '#f-place').value = draft.place;
   qs<HTMLTextAreaElement>(root, '#f-note').value = draft.note;
+  qs(root, '#f-note-field').hidden = !draft.note.trim();
   qs(root, '#f-save').textContent = existing ? 'שמירת השינויים' : 'שמירת הדיווח';
-  paintPhotos();
   paintWhereWhen();
 
   [myPlaces, catalog] = await Promise.all([placeSuggestions(), allTaxa()]);
@@ -266,13 +260,14 @@ export function deactivate(): void {
 
 async function addPhotos(files: File[]): Promise<void> {
   const mySession = session;
+  const entry = draft.entries.find((e) => e.id === mediaTarget) ?? draft.entries[0]!;
+  const card = () => root.querySelector<HTMLElement>(`[data-entry="${entry.id}"]`);
   const wasEmpty = draft.photoIds.length === 0;
-  const strip = qs(root, '#f-photos');
-  strip.classList.add('busy');
+  card()?.classList.add('busy');
   try {
     for (const [i, file] of files.entries()) {
       const video = isVideoFile(file);
-      // The first photo of a report sets its time and place (a video only its time).
+      // The observation's first photo sets its time and place (a video only its time).
       if (wasEmpty && i === 0) {
         const exif = video ? { date: null, lat: null, lng: null } : await readExif(file);
         if (mySession !== session) return;
@@ -284,16 +279,16 @@ async function addPhotos(files: File[]): Promise<void> {
         await addMedia(rec);
         addedPhotoIds.push(rec.id);
         draft.photoIds.push(rec.id);
+        entry.mediaIds = [...(entry.mediaIds ?? []), rec.id];
         if (video) draft.videoIds = [...(draft.videoIds ?? []), rec.id];
-        paintPhotos();
+        const c = card();
+        if (c) paintEntryMedia(c, entry);
       } catch (err) {
         toast(`${file.name}: ${(err as Error).message}`, true, 5000);
       }
     }
-  } catch (err) {
-    toast('לא ניתן לטעון את התמונה: ' + (err as Error).message, true);
   } finally {
-    strip.classList.remove('busy');
+    card()?.classList.remove('busy');
   }
 }
 
@@ -319,21 +314,18 @@ function applyPhotoMetadata(date: Date | null, lat: number | null, lng: number |
   paintWhereWhen();
 }
 
-function paintPhotos(): void {
-  const strip = qs(root, '#f-photos');
-  const has = draft.photoIds.length > 0;
-  qs(root, '#f-photo-pick').hidden = has;
-  strip.hidden = !has;
-  if (!has) { strip.innerHTML = ''; return; }
-  strip.innerHTML = draft.photoIds.map((id, i) => `
-    <div class="photo-thumb${i === 0 ? ' cover' : ''}">
+function paintEntryMedia(card: HTMLElement, entry: SpeciesEntry): void {
+  const strip = card.querySelector<HTMLElement>('.entry-media')!;
+  const ids = entry.mediaIds ?? [];
+  strip.innerHTML = ids.map((id) => `
+    <div class="photo-thumb">
       <img alt="" data-id="${id}">
-      ${draft.videoIds?.includes(id) ? `<span class="play-badge">${icon('play', 22, 2)}</span>` : ''}
-      <button type="button" class="photo-remove" data-remove="${id}" aria-label="הסרת התמונה">${icon('close', 16, 2.2)}</button>
+      ${draft.videoIds?.includes(id) ? `<span class="play-badge">${icon('play', 20, 2)}</span>` : ''}
+      <button type="button" class="photo-remove" data-remove-media="${id}" aria-label="הסרה">${icon('close', 16, 2.2)}</button>
     </div>`).join('') + `
-    <button type="button" class="photo-add" aria-label="הוספת תמונה מהגלריה">${icon('image', 26, 1.6)}<span>עוד תמונה</span></button>
-    <button type="button" class="photo-add-camera" aria-label="צילום תמונה נוספת">${icon('camera', 26, 1.6)}<span>צילום</span></button>
-    <button type="button" class="photo-add-video" aria-label="צילום סרטון">${icon('play', 26, 1.6)}<span>סרטון</span></button>`;
+    <button type="button" class="media-add" data-add-media="gallery">${icon('image', 22, 1.6)}<span>${ids.length ? 'עוד' : 'תמונה'}</span></button>
+    <button type="button" class="media-add" data-add-media="camera">${icon('camera', 22, 1.6)}<span>צילום</span></button>
+    <button type="button" class="media-add" data-add-media="video">${icon('play', 22, 1.6)}<span>סרטון</span></button>`;
   strip.querySelectorAll<HTMLImageElement>('img[data-id]').forEach((img) => {
     void thumbUrl(img.dataset.id!).then((url) => { if (url) img.src = url; });
   });
@@ -365,11 +357,14 @@ function renderEntries(): void {
         </div>
         <label class="check"><input type="checkbox" class="e-uncertain"${e.uncertain ? ' checked' : ''}> לא בטוח בזיהוי</label>
       </div>
+      <div class="entry-media"></div>
+      <textarea class="e-note" rows="2" aria-label="הערה על המין" placeholder="הערה על המין — התנהגות, מספר פרטים, סביבה...">${escapeHtml(e.note ?? '')}</textarea>
     </div>`).join('');
   box.querySelectorAll<HTMLElement>('[data-entry]').forEach((card) => {
     const entry = draft.entries.find((x) => x.id === card.dataset.entry)!;
     paintEntryCategory(card, entry);
     paintSci(card, entry);
+    paintEntryMedia(card, entry);
     const input = card.querySelector<HTMLInputElement>('.e-species')!;
     wireCombo(input, {
       scrollOnFocus: true,
@@ -539,9 +534,15 @@ async function save(): Promise<void> {
     toast('יש להוסיף תמונה או שם מין', true);
     return;
   }
+  // All media now belongs to a species; the observation's list follows the species order.
+  draft.photoIds = draft.entries.flatMap((e) => e.mediaIds ?? []);
+  draft.videoIds = (draft.videoIds ?? []).filter((id) => draft.photoIds.includes(id));
   // A typed name that exactly matches a catalog species gets linked to it.
   for (const e of draft.entries) {
     e.species = e.species.trim();
+    if (e.note !== undefined) e.note = e.note.trim();
+    if (!e.note) delete e.note;
+    if (!e.mediaIds?.length) delete e.mediaIds;
     if (!e.taxonId && e.species) {
       const t = await findTaxonByName(e.category, e.species);
       if (t) { e.taxonId = t.id; e.sci = t.sci; }
@@ -570,7 +571,7 @@ async function save(): Promise<void> {
 }
 
 async function cancel(): Promise<void> {
-  const typed = draft.entries.some((e) => e.species.trim()) || draft.note.trim();
+  const typed = draft.entries.some((e) => e.species.trim() || e.note?.trim()) || draft.note.trim();
   const dirty = addedPhotoIds.length > 0 || (!editId && typed);
   if (dirty && !(await confirmDialog('לצאת בלי לשמור? מה שהוזן לא יישמר.', 'יציאה בלי שמירה'))) return;
   goBack();

@@ -21,8 +21,10 @@ export interface Observation {
   place: string;
   /** The species seen — one observation (place + time) can hold several. */
   entries: SpeciesEntry[];
+  /** General note (older reports; new notes are per species). */
   note: string;
-  /** Media ids (photos and video clips), in display order — the first is the cover. */
+  /** All media ids (photos and video clips) — every species' media, plus any
+   * general ones from before per-species media; the first is the cover. */
   photoIds: string[];
   /** Which of photoIds are video clips. */
   videoIds?: string[];
@@ -46,6 +48,10 @@ export interface SpeciesEntry {
   taxonId?: number;
   quantity: number;
   uncertain: boolean;
+  /** A note about this species. */
+  note?: string;
+  /** This species' photos/clips (ids also listed, in order, in the observation's photoIds). */
+  mediaIds?: string[];
 }
 
 /** Someone reporting into a shared journal. */

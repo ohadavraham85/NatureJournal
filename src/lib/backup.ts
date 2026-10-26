@@ -35,13 +35,14 @@ export async function buildCsv(): Promise<File> {
   const obs = (await db.observations.filter((o) => !o.deleted).toArray()).sort((a, b) => (a.dateTime < b.dateTime ? -1 : 1));
   // One row per species; rows of the same observation share its number.
   const rows: unknown[][] = [[
-    'תצפית', 'תאריך ושעה', 'קטגוריה', 'מין', 'שם מדעי', 'כמות', 'לא בטוח בזיהוי', 'מקום', 'קו רוחב', 'קו אורך', 'הערה', 'תמונות',
+    'תצפית', 'תאריך ושעה', 'קטגוריה', 'מין', 'שם מדעי', 'כמות', 'לא בטוח בזיהוי', 'הערה על המין', 'מקום', 'קו רוחב', 'קו אורך', 'הערה כללית', 'תמונות וסרטונים',
   ]];
   obs.forEach((o, i) => {
     for (const e of o.entries) {
       rows.push([
         i + 1, localDateTime(o.dateTime), category(e.category).label, e.species, e.sci ?? '', e.quantity,
-        e.uncertain ? 'כן' : '', o.place, o.lat?.toFixed(6) ?? '', o.lng?.toFixed(6) ?? '', o.note, o.photoIds.length,
+        e.uncertain ? 'כן' : '', e.note ?? '', o.place, o.lat?.toFixed(6) ?? '', o.lng?.toFixed(6) ?? '', o.note,
+        e.mediaIds?.length ?? (o.entries.length === 1 ? o.photoIds.length : 0),
       ]);
     }
   });

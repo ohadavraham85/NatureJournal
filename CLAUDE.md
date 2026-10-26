@@ -37,10 +37,14 @@
   Storage (curl works) — relay them through curl in Playwright routes. Use
   throwaway `nj-` codes and delete their docs/objects afterwards; never list
   `households/` (other people's journals).
-- An observation = place + time + photos + `entries: SpeciesEntry[]` (each
-  with its own category/species/quantity/uncertain). `lib/observation.ts`
+- An observation = place + time + `entries: SpeciesEntry[]` (each with its own
+  category/species/quantity/uncertain, `note` and `mediaIds`); `photoIds` is
+  every species' media in order (older reports may have media/notes not tied
+  to a species — shown on top, moved to the first species when edited). `lib/observation.ts`
   converts the old one-species shape (Dexie v3 upgrade, backups, synced docs
   from older app versions).
+- Main's top/bottom follow the bars' measured heights (`--topbar-real`,
+  `--tabbar-real`, set in main.ts) — never hard-code bar heights.
 - Settings are split into sections (`views/settings.ts`); appearance lives in
   `lib/theme.ts` + the boot script in `index.html`; backup/CSV in `lib/backup.ts`.
 - Roadmap: done — report form (multi-species, photos + short videos), journal,
