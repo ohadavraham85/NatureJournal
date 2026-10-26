@@ -3,7 +3,7 @@
 
 import { category, categoryIcon } from '../data/categories';
 import { deleteObservation, getObservation, listObservations } from '../db/repository';
-import { photoUrl } from '../lib/media-url';
+import { photoUrl, thumbUrl } from '../lib/media-url';
 import { findTaxonByName, getTaxon } from '../lib/catalog';
 import { openSpeciesCard } from '../lib/species-info';
 import { entryName, obsTitle, primaryCategory } from '../lib/observation';
@@ -54,7 +54,9 @@ export async function activate(): Promise<void> {
         <div class="detail-when">${icon('clock', 18)} ${fmtDateTime(o.dateTime)}${who ? ` · ${escapeHtml(who)}${isMe(o.reporterId, me) ? ' (אני)' : ''}` : ''}</div>
       </div>
       ${o.photoIds.length
-        ? `<div class="detail-photos${o.photoIds.length > 1 ? ' multi' : ''}">${o.photoIds.map((id) => `<img alt="${escapeHtml(obsTitle(o))}" data-full="${id}">`).join('')}</div>`
+        ? `<div class="detail-photos${o.photoIds.length > 1 ? ' multi' : ''}">${o.photoIds.map((id) => o.videoIds?.includes(id)
+          ? `<video controls playsinline preload="metadata" data-video="${id}" aria-label="סרטון"></video>`
+          : `<img alt="${escapeHtml(obsTitle(o))}" data-full="${id}">`).join('')}</div>`
         : ''}
       <div class="detail-body">
         <h2 class="detail-heading">${o.entries.length > 1 ? `${o.entries.length} מינים בתצפית` : 'המין'}</h2>
@@ -82,6 +84,10 @@ export async function activate(): Promise<void> {
     </article>`;
   root.querySelectorAll<HTMLImageElement>('img[data-full]').forEach((img) => {
     void photoUrl(img.dataset.full!).then((url) => { if (url) img.src = url; });
+  });
+  root.querySelectorAll<HTMLVideoElement>('video[data-video]').forEach((v) => {
+    void thumbUrl(v.dataset.video!).then((url) => { if (url) v.poster = url; });
+    void photoUrl(v.dataset.video!).then((url) => { if (url) v.src = url; });
   });
 }
 

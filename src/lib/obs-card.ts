@@ -4,6 +4,7 @@
 
 import { category, categoryIcon } from '../data/categories';
 import { escapeHtml } from './escape';
+import { icon } from './icons';
 import { fmtShortDate } from './ui';
 import { obsCategories, obsTitle, primaryCategory } from './observation';
 import type { Observation } from '../types';
@@ -27,6 +28,15 @@ function countBadge(o: Observation): string {
   return q > 1 ? `×${q}` : '';
 }
 
+/** "3 תמונות", "סרטון", "2 תמונות · סרטון". */
+function mediaCount(o: Observation): string {
+  const v = o.videoIds?.length ?? 0;
+  const p = o.photoIds.length - v;
+  const photos = p === 1 ? 'תמונה' : p ? `${p} תמונות` : '';
+  const videos = v === 1 ? 'סרטון' : v ? `${v} סרטונים` : '';
+  return [photos, videos].filter(Boolean).join(' · ');
+}
+
 function meta(o: Observation, showReporter: boolean): string {
   return [showReporter ? reporterName(o) : '', o.place, fmtShortDate(o.dateTime)].filter(Boolean).map(escapeHtml).join(' · ');
 }
@@ -41,7 +51,8 @@ export function obsCardHtml(o: Observation, showReporter = false): string {
         ${cover ? `<img alt="" data-thumb="${cover}" loading="lazy">` : `<span class="obs-placeholder">${categoryIcon(c.id, 40, 1.5)}</span>`}
         ${o.entries.some((e) => e.uncertain) ? '<span class="obs-uncertain">לא בטוח בזיהוי</span>' : ''}
         ${badge ? `<span class="obs-qty">${badge}</span>` : ''}
-        ${o.photoIds.length > 1 ? `<span class="obs-count">${o.photoIds.length} תמונות</span>` : ''}
+        ${cover && o.videoIds?.includes(cover) ? `<span class="play-badge">${icon('play', 22, 2)}</span>` : ''}
+        ${o.photoIds.length > 1 ? `<span class="obs-count">${mediaCount(o)}</span>` : ''}
       </span>
       <span class="obs-body">
         <strong class="obs-name">${escapeHtml(obsTitle(o))}</strong>
@@ -60,6 +71,7 @@ export function obsStripHtml(o: Observation, showReporter = false): string {
     <button type="button" class="obs-strip" data-id="${o.id}" style="--cat:${c.color};--cat-tint:${c.tint}">
       <span class="strip-photo">
         ${cover ? `<img alt="" data-thumb="${cover}" loading="lazy">` : categoryIcon(c.id, 28, 1.5)}
+        ${cover && o.videoIds?.includes(cover) ? `<span class="play-badge small">${icon('play', 16, 2)}</span>` : ''}
       </span>
       <span class="strip-body">
         <strong class="obs-name">${escapeHtml(obsTitle(o))}${badge ? ` <span class="strip-qty">${badge}</span>` : ''}</strong>
