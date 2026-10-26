@@ -43,5 +43,7 @@
   from older app versions).
 - Settings are split into sections (`views/settings.ts`); appearance lives in
   `lib/theme.ts` + the boot script in `index.html`; backup/CSV in `lib/backup.ts`.
-- Roadmap: done — report form, journal, offline PWA, species catalog, settings
-  (design/export/backup), shared journal sync. Next — map + gallery (Leaflet).
+- Roadmap: done — report form (multi-species, photos + short videos), journal,
+  offline PWA, species catalog ("המאגר הביולוגי של ישראל"), settings
+  (design/export/backup), shared journal sync with admin, map tab, gallery
+  with full-screen viewer/slideshow.
