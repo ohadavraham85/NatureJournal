@@ -39,12 +39,24 @@ export async function getMe(): Promise<Me> {
 export async function setMe(me: Me): Promise<void> {
   meCache = me;
   await setSetting(ME_KEY, me);
+  window.dispatchEvent(new Event('nj-me-changed'));
 }
 
-/** Reports by someone else in a shared journal are read-only here. The
- * same person on another device counts as me — by id, by a former id of
- * mine, or by the same name (joining twice under one name). */
+/** Whether I'm an admin of the shared journal (any of my member entries). */
+export function isAdmin(me: Me): boolean {
+  return members.some((m) => m.admin && isMe(m.id, me));
+}
+
+export function journalHasAdmin(): boolean {
+  return members.some((m) => m.admin);
+}
+
+/** Reports by someone else in a shared journal are read-only here — unless
+ * I'm the journal's admin. The same person on another device counts as me —
+ * by id, by a former id of mine, or by the same name (joining twice under
+ * one name). */
 export function canEdit(o: Observation, me: Me): boolean {
+  if (isAdmin(me)) return true;
   if (!o.reporterId || o.reporterId === me.id || me.aliases?.includes(o.reporterId)) return true;
   const mine = me.name.trim().toLowerCase();
   return !!mine && reporterName(o).trim().toLowerCase() === mine;

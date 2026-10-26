@@ -14,7 +14,7 @@ import { currentPosition, reverseGeocode } from '../lib/geo';
 import { icon } from '../lib/icons';
 import { escapeHtml } from '../lib/escape';
 import { qs } from '../lib/dom';
-import { allTaxa, findTaxonByName, getTaxon, taxonName } from '../lib/catalog';
+import { allTaxa, byName, findTaxonByName, getTaxon, taxonName } from '../lib/catalog';
 import { wireCombo, type ComboItem } from '../lib/combo';
 import { confirmDialog, fmtCoords, fromLocalInputValue, toast, toLocalInputValue } from '../lib/ui';
 import { goBack, navigate } from '../lib/nav';
@@ -394,7 +394,7 @@ function speciesGroups(entry: SpeciesEntry): Array<{ title: string; items: Combo
   return [
     { title: 'מהדיווחים שלך', items: mine.map((n) => ({ value: n, label: n })), limit: 5, emptyLimit: 6 },
     {
-      title: cat ? `${category(cat).label} בישראל` : 'מאגר המינים בישראל',
+      title: cat ? `${category(cat).label} — המאגר הביולוגי של ישראל` : 'המאגר הביולוגי של ישראל',
       items: catalogItemsFor(cat).filter((it) => !mineSet.has(it.value)),
       limit: 40, emptyLimit: 15,
     },
@@ -415,8 +415,10 @@ function catalogItemsFor(cat: string): ComboItem[] {
     img: t.photo,
     keys: [t.he, t.en, t.sci],
     data: String(t.id),
-    weight: t.count,
-  })).sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
+  }));
+  // Alphabetical — the same order as in the species tab.
+  const order = new Map([...inCat].sort(byName).map((t, i) => [String(t.id), i]));
+  items.sort((a, b) => order.get(a.data!)! - order.get(b.data!)!);
   itemCache.byCat.set(cat, items);
   return items;
 }

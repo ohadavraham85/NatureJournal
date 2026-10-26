@@ -3,11 +3,9 @@
  * position, or search a place by name (online). Ported from the Birds
  * journal's picker. Loaded on demand (it pulls in Leaflet), see form.ts. */
 
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { L, wireLayerToggle } from './map-tiles';
 import { icon } from './icons';
 import { escapeHtml } from './escape';
-import { getSetting, setSetting } from '../db/repository';
 
 export interface LatLng { lat: number; lng: number }
 
@@ -19,14 +17,6 @@ const pinIcon = L.divIcon({
   iconSize: [36, 46],
   iconAnchor: [18, 45],
 });
-
-function tileLayers(): { street: L.TileLayer; satellite: L.TileLayer; labels: L.TileLayer } {
-  return {
-    street: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }),
-    satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri' }),
-    labels: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, zIndex: 3 }),
-  };
-}
 
 interface SearchHit { display_name: string; lat: string; lon: string }
 
@@ -70,16 +60,7 @@ export function pickLocation(initial: LatLng | null, fallbackCenter: LatLng | nu
     setTimeout(() => map.invalidateSize(), 80);
 
     // Satellite by default (easier to recognise a wadi or a field); remembered per device.
-    const layers = tileLayers();
-    const toggleBtn = backdrop.querySelector<HTMLButtonElement>('[data-layer]')!;
-    let satellite = true;
-    const applyLayers = (): void => {
-      if (satellite) { map.removeLayer(layers.street); layers.satellite.addTo(map); layers.labels.addTo(map); }
-      else { map.removeLayer(layers.satellite); map.removeLayer(layers.labels); layers.street.addTo(map); }
-      toggleBtn.textContent = satellite ? 'מפת דרכים' : 'לוויין';
-    };
-    void getSetting('mapSatellite', true).then((v) => { satellite = v; applyLayers(); });
-    toggleBtn.addEventListener('click', () => { satellite = !satellite; applyLayers(); void setSetting('mapSatellite', satellite); });
+    wireLayerToggle(map, backdrop.querySelector<HTMLButtonElement>('[data-layer]')!);
 
     const close = (result: LatLng | null): void => {
       map.remove();

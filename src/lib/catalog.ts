@@ -157,15 +157,23 @@ export function taxonName(t: Taxon): string {
 }
 
 /** Ranks catalog species against a typed query with forgiving spelling
- * (see fuzzy.ts); ties broken by how commonly observed. */
+ * (see fuzzy.ts); ties — and the unfiltered list — in alphabetical order. */
 export function searchTaxa(taxa: Taxon[], query: string, limit: number): Taxon[] {
-  if (!query.trim()) return [...taxa].sort((a, b) => b.count - a.count).slice(0, limit);
+  if (!query.trim()) return [...taxa].sort(byName).slice(0, limit);
   const scored: Array<[number, Taxon]> = [];
   for (const t of taxa) {
     const s = bestScore(query, [t.he, t.en, t.sci]);
     if (s !== null) scored.push([s, t]);
   }
-  return scored.sort((a, b) => a[0] - b[0] || b[1].count - a[1].count).slice(0, limit).map(([, t]) => t);
+  return scored.sort((a, b) => a[0] - b[0] || byName(a[1], b[1])).slice(0, limit).map(([, t]) => t);
+}
+
+const collator = new Intl.Collator('he');
+/** Alphabetical (Hebrew א–ת first, then names that only have a Latin name). */
+export function byName(a: Taxon, b: Taxon): number {
+  const ah = !!a.he, bh = !!b.he;
+  if (ah !== bh) return ah ? -1 : 1;
+  return collator.compare(taxonName(a), taxonName(b));
 }
 
 /** Exact Hebrew/English/scientific name match within a category — links a
