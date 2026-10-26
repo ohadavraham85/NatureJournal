@@ -26,7 +26,7 @@ import * as detailView from './views/detail';
 import * as speciesView from './views/species';
 import * as settingsView from './views/settings';
 import * as mapView from './views/map';
-import { soonView } from './views/soon';
+import * as galleryView from './views/gallery';
 
 const VIEWS: Record<string, View> = {
   home: homeView,
@@ -35,7 +35,7 @@ const VIEWS: Record<string, View> = {
   detail: detailView,
   species: speciesView,
   settings: settingsView,
-  gallery: soonView('grid', 'גלריה', 'כל התמונות שצילמת במקום אחד — מגיע בשלב הבא.'),
+  gallery: galleryView,
   map: mapView,
 };
 
