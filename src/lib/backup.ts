@@ -7,6 +7,7 @@ import { db } from '../db/database';
 import { category } from '../data/categories';
 import type { MediaRecord, Observation } from '../types';
 import { getSyncCode, loadEngine, queueForSync } from '../sync/state';
+import { normalizeObservation } from './observation';
 
 const BACKUP_APP = 'nature-journal';
 const BACKUP_FORMAT = 1;
@@ -32,15 +33,18 @@ function localDateTime(iso: string): string {
 
 export async function buildCsv(): Promise<File> {
   const obs = (await db.observations.filter((o) => !o.deleted).toArray()).sort((a, b) => (a.dateTime < b.dateTime ? -1 : 1));
+  // One row per species; rows of the same observation share its number.
   const rows: unknown[][] = [[
-    'תאריך ושעה', 'קטגוריה', 'מין', 'שם מדעי', 'כמות', 'לא בטוח בזיהוי', 'מקום', 'קו רוחב', 'קו אורך', 'הערה', 'תמונות',
+    'תצפית', 'תאריך ושעה', 'קטגוריה', 'מין', 'שם מדעי', 'כמות', 'לא בטוח בזיהוי', 'מקום', 'קו רוחב', 'קו אורך', 'הערה', 'תמונות',
   ]];
-  for (const o of obs) {
-    rows.push([
-      localDateTime(o.dateTime), category(o.category).label, o.species, o.sci ?? '', o.quantity,
-      o.uncertain ? 'כן' : '', o.place, o.lat?.toFixed(6) ?? '', o.lng?.toFixed(6) ?? '', o.note, o.photoIds.length,
-    ]);
-  }
+  obs.forEach((o, i) => {
+    for (const e of o.entries) {
+      rows.push([
+        i + 1, localDateTime(o.dateTime), category(e.category).label, e.species, e.sci ?? '', e.quantity,
+        e.uncertain ? 'כן' : '', o.place, o.lat?.toFixed(6) ?? '', o.lng?.toFixed(6) ?? '', o.note, o.photoIds.length,
+      ]);
+    }
+  });
   return new File([toCsv(rows)], `יומן-טבע-${today()}.csv`, { type: 'text/csv;charset=utf-8' });
 }
 
@@ -112,7 +116,7 @@ export async function readBackup(file: File): Promise<ParsedBackup> {
  * the device is deleted. Returns how many reports were added or updated. */
 export async function restoreBackup({ data }: ParsedBackup): Promise<number> {
   const existing = new Map((await db.observations.toArray()).map((o) => [o.id, o]));
-  const incoming = data.observations.filter((o) => {
+  const incoming = data.observations.map(normalizeObservation).filter((o) => {
     const cur = existing.get(o.id);
     return !cur || (o.updatedAt || '') > (cur.updatedAt || '');
   });

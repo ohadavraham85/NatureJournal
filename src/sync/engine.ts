@@ -17,6 +17,7 @@ import {
   getOutbox, queueForSync, removeFromOutbox, setMembers, setStatus, type Me,
 } from './state';
 import type { Member, Observation } from '../types';
+import { normalizeObservation } from '../lib/observation';
 
 interface RemotePhoto { id: string; full: string; thumb: string }
 type RemoteObservation = Observation & { photos?: RemotePhoto[] };
@@ -192,5 +193,6 @@ async function mergeRemote(remote: RemoteObservation): Promise<void> {
         : { id: p.id, obsId: obs.id, name: '', width: 0, height: 0, createdAt: obs.updatedAt, remoteFull: p.full, remoteThumb: p.thumb });
     }
   }
-  await putObservationRaw({ ...obs, photoIds: obs.deleted ? [] : obs.photoIds ?? [] } as Observation);
+  // Devices still on an older version send the one-species shape.
+  await putObservationRaw(normalizeObservation({ ...obs, photoIds: obs.deleted ? [] : obs.photoIds ?? [] } as Observation));
 }

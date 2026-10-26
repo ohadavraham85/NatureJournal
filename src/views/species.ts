@@ -79,15 +79,17 @@ export async function activate(): Promise<void> {
 function myStats(): SpeciesStat[] {
   const stats = new Map<string, SpeciesStat>();
   for (const o of observations) {
-    const name = o.species.trim();
-    if (!name) continue;
-    const key = `${o.category}|${name}`;
-    const s = stats.get(key);
-    if (s) {
-      s.count++;
-      if (o.dateTime > s.last) s.last = o.dateTime;
-      s.taxonId ??= o.taxonId;
-    } else stats.set(key, { name, cat: o.category, count: 1, last: o.dateTime, taxonId: o.taxonId });
+    for (const e of o.entries) {
+      const name = e.species.trim();
+      if (!name) continue;
+      const key = `${e.category}|${name}`;
+      const s = stats.get(key);
+      if (s) {
+        s.count++;
+        if (o.dateTime > s.last) s.last = o.dateTime;
+        s.taxonId ??= e.taxonId;
+      } else stats.set(key, { name, cat: e.category, count: 1, last: o.dateTime, taxonId: e.taxonId });
+    }
   }
   return [...stats.values()].sort((a, b) => a.name.localeCompare(b.name, 'he'));
 }
@@ -98,8 +100,10 @@ function seenCounts(): Map<number, number> {
   for (const t of taxa) for (const n of [t.he, t.sci]) if (n) byName.set(`${t.category}|${n}`, t.id);
   const counts = new Map<number, number>();
   for (const o of observations) {
-    const id = o.taxonId ?? byName.get(`${o.category}|${o.species.trim()}`);
-    if (id != null) counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const e of o.entries) {
+      const id = e.taxonId ?? byName.get(`${e.category}|${e.species.trim()}`);
+      if (id != null) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
   }
   return counts;
 }

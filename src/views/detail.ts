@@ -1,12 +1,12 @@
-/* views/detail.ts — one report in full: photos, details, edit and delete. */
+/* views/detail.ts — one observation in full: where and when at the top,
+ * the photos, then every species seen there; edit and delete. */
 
 import { category, categoryIcon } from '../data/categories';
-import { deleteObservation, getObservation } from '../db/repository';
-import { displayName } from '../lib/obs-card';
+import { deleteObservation, getObservation, listObservations } from '../db/repository';
 import { photoUrl } from '../lib/media-url';
 import { findTaxonByName, getTaxon } from '../lib/catalog';
 import { openSpeciesCard } from '../lib/species-info';
-import { listObservations } from '../db/repository';
+import { entryName, obsTitle, primaryCategory } from '../lib/observation';
 import { escapeHtml } from '../lib/escape';
 import { icon } from '../lib/icons';
 import { confirmDialog, fmtCoords, fmtDateTime, showImageModal, toast } from '../lib/ui';
@@ -23,7 +23,8 @@ export function init(el: HTMLElement): void {
     const t = e.target as HTMLElement;
     const img = t.closest<HTMLImageElement>('.detail-photos img');
     if (img?.src) { showImageModal(img.src); return; }
-    if (t.closest('#d-info')) void openInfo();
+    const info = t.closest<HTMLElement>('[data-info]');
+    if (info) void openInfo(info.dataset.info!);
     else if (t.closest('#d-edit')) navigate('form', { editId: viewId });
     else if (t.closest('#d-delete')) void remove();
   });
@@ -39,31 +40,40 @@ export async function activate(): Promise<void> {
     root.innerHTML = '<div class="empty"><p>הדיווח לא נמצא.</p></div>';
     return;
   }
-  const c = category(o.category);
+  const c = category(primaryCategory(o));
   const me = await getMe();
   const mine = canEdit(o, me);
   const coords = fmtCoords(o.lat, o.lng);
   const mapsUrl = o.lat != null && o.lng != null ? `https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}` : '';
+  const who = reporterName(o);
   root.innerHTML = `
     <article class="detail" style="--cat:${c.color};--cat-tint:${c.tint}">
+      <div class="detail-where">
+        <div class="detail-place">${icon('pin', 22)}<div><strong>${o.place ? escapeHtml(o.place) : 'ללא שם מקום'}</strong>
+          ${coords ? `<a href="${mapsUrl}" target="_blank" rel="noopener" dir="ltr" class="coords">${coords}</a>` : ''}</div></div>
+        <div class="detail-when">${icon('clock', 18)} ${fmtDateTime(o.dateTime)}${who ? ` · ${escapeHtml(who)}${isMe(o.reporterId, me) ? ' (אני)' : ''}` : ''}</div>
+      </div>
       ${o.photoIds.length
-        ? `<div class="detail-photos${o.photoIds.length > 1 ? ' multi' : ''}">${o.photoIds.map((id) => `<img alt="${escapeHtml(displayName(o))}" data-full="${id}">`).join('')}</div>`
-        : `<div class="detail-placeholder">${categoryIcon(c.id, 64, 1.3)}</div>`}
+        ? `<div class="detail-photos${o.photoIds.length > 1 ? ' multi' : ''}">${o.photoIds.map((id) => `<img alt="${escapeHtml(obsTitle(o))}" data-full="${id}">`).join('')}</div>`
+        : ''}
       <div class="detail-body">
-        <div class="detail-title">
-          <h2>${escapeHtml(displayName(o))}</h2>
-          ${o.sci ? `<p class="detail-sci" dir="ltr">${escapeHtml(o.sci)}</p>` : ''}
-          <span class="cat-tag">${categoryIcon(c.id, 14, 2)} ${c.label}</span>
-        </div>
-        ${o.uncertain ? `<p class="uncertain-note">${icon('question', 18)} לא בטוח בזיהוי</p>` : ''}
-        <dl class="detail-facts">
-          <div><dt>${icon('clock', 18)}</dt><dd>${fmtDateTime(o.dateTime)}</dd></div>
-          <div><dt>${icon('pin', 18)}</dt><dd>${o.place ? escapeHtml(o.place) : 'ללא שם מקום'}${coords ? `<br><a href="${mapsUrl}" target="_blank" rel="noopener" dir="ltr" class="coords">${coords}</a>` : ''}</dd></div>
-          <div><dt>כמות</dt><dd>${o.quantity}</dd></div>
-          ${reporterName(o) ? `<div><dt>דיווח</dt><dd>${escapeHtml(reporterName(o))}${isMe(o.reporterId, me) ? ' (אני)' : ''}</dd></div>` : ''}
-        </dl>
+        <h2 class="detail-heading">${o.entries.length > 1 ? `${o.entries.length} מינים בתצפית` : 'המין'}</h2>
+        <ul class="entry-list">
+          ${o.entries.map((e) => {
+            const ec = category(e.category);
+            return `
+              <li class="entry-card" style="--cat:${ec.color};--cat-tint:${ec.tint}">
+                <span class="cat-icon">${categoryIcon(ec.id, 22)}</span>
+                <span class="entry-text">
+                  <strong>${escapeHtml(entryName(e))}${e.quantity > 1 ? ` <span class="strip-qty">×${e.quantity}</span>` : ''}</strong>
+                  ${e.sci ? `<small dir="ltr" class="entry-sci">${escapeHtml(e.sci)}</small>` : ''}
+                  <span class="strip-tags"><span class="cat-tag">${ec.label}</span>${e.uncertain ? '<span class="uncertain-tag">לא בטוח בזיהוי</span>' : ''}</span>
+                </span>
+                ${e.species.trim() ? `<button type="button" class="btn btn-sm btn-soft" data-info="${e.id}" aria-label="מידע על ${escapeHtml(entryName(e))}">${icon('info', 16)} מידע</button>` : ''}
+              </li>`;
+          }).join('')}
+        </ul>
         ${o.note ? `<div class="detail-note">${escapeHtml(o.note).replace(/\n/g, '<br>')}</div>` : ''}
-        ${o.species.trim() ? `<button type="button" class="btn btn-soft" id="d-info">${icon('info', 18)} מידע על המין</button>` : ''}
         ${mine ? `<div class="detail-actions">
           <button type="button" class="btn btn-primary" id="d-edit">${icon('edit', 18)} עריכה</button>
           <button type="button" class="btn btn-danger" id="d-delete">${icon('trash', 18)} מחיקה</button>
@@ -75,18 +85,20 @@ export async function activate(): Promise<void> {
   });
 }
 
-async function openInfo(): Promise<void> {
+async function openInfo(entryId: string): Promise<void> {
   const o = await getObservation(viewId);
-  if (!o) return;
-  const taxon = o.taxonId ? await getTaxon(o.taxonId) : await findTaxonByName(o.category, o.species);
-  const name = o.species.trim();
-  const myCount = (await listObservations()).filter((x) => x.category === o.category && x.species.trim() === name).length;
-  openSpeciesCard({ name, categoryId: o.category, taxon, myCount });
+  const e = o?.entries.find((x) => x.id === entryId);
+  if (!e) return;
+  const taxon = e.taxonId ? await getTaxon(e.taxonId) : await findTaxonByName(e.category, e.species);
+  const name = e.species.trim();
+  let myCount = 0;
+  for (const x of await listObservations()) myCount += x.entries.filter((y) => y.category === e.category && y.species.trim() === name).length;
+  openSpeciesCard({ name, categoryId: e.category, taxon, myCount });
 }
 
 async function remove(): Promise<void> {
-  if (!(await confirmDialog('למחוק את הדיווח ואת התמונות שלו? אי אפשר לבטל את זה.', 'מחיקה'))) return;
+  if (!(await confirmDialog('למחוק את התצפית, כל המינים שבה והתמונות שלה? אי אפשר לבטל את זה.', 'מחיקה'))) return;
   await deleteObservation(viewId);
-  toast('הדיווח נמחק');
+  toast('התצפית נמחקה');
   goBack();
 }
