@@ -19,7 +19,7 @@ import {
 import type { Member, Observation } from '../types';
 import { normalizeObservation } from '../lib/observation';
 
-interface RemotePhoto { id: string; full: string; thumb: string }
+interface RemotePhoto { id: string; full: string; thumb: string; kind?: 'photo' | 'video'; mime?: string }
 type RemoteObservation = Observation & { photos?: RemotePhoto[] };
 
 let code = '';
@@ -161,16 +161,20 @@ export function flush(): Promise<void> {
 async function uploadPhoto(mediaId: string): Promise<RemotePhoto | null> {
   const m = await getMedia(mediaId);
   if (!m) return null;
-  if (m.remoteFull && m.remoteThumb) return { id: m.id, full: m.remoteFull, thumb: m.remoteThumb };
+  const extra = m.kind === 'video' ? { kind: 'video' as const, mime: m.mime } : {};
+  if (m.remoteFull && m.remoteThumb) return { id: m.id, full: m.remoteFull, thumb: m.remoteThumb, ...extra };
   if (!m.blob || !m.thumb) return null;
   const base = `households/${code}/nature-media/${m.id}`;
-  const meta = { contentType: 'image/jpeg', cacheControl: 'public,max-age=31536000' };
-  const fullRef = ref(firebaseStorage(), `${base}.jpg`);
+  const video = m.kind === 'video';
+  const ext = video ? (m.mime?.includes('quicktime') ? 'mov' : m.mime?.includes('webm') ? 'webm' : 'mp4') : 'jpg';
+  const meta = { contentType: video ? m.mime || 'video/mp4' : 'image/jpeg', cacheControl: 'public,max-age=31536000' };
+  const thumbMeta = { contentType: 'image/jpeg', cacheControl: 'public,max-age=31536000' };
+  const fullRef = ref(firebaseStorage(), `${base}.${ext}`);
   const thumbRef = ref(firebaseStorage(), `${base}-t.jpg`);
-  await Promise.all([uploadBytes(fullRef, m.blob, meta), uploadBytes(thumbRef, m.thumb, meta)]);
+  await Promise.all([uploadBytes(fullRef, m.blob, meta), uploadBytes(thumbRef, m.thumb, thumbMeta)]);
   const [full, thumb] = await Promise.all([getDownloadURL(fullRef), getDownloadURL(thumbRef)]);
   await putMedia({ ...m, remoteFull: full, remoteThumb: thumb });
-  return { id: m.id, full, thumb };
+  return { id: m.id, full, thumb, ...extra };
 }
 
 async function pushOne(id: string): Promise<void> {
@@ -201,7 +205,10 @@ async function mergeRemote(remote: RemoteObservation): Promise<void> {
       const existing = await getMedia(p.id);
       await putMedia(existing
         ? { ...existing, obsId: obs.id, remoteFull: p.full, remoteThumb: p.thumb }
-        : { id: p.id, obsId: obs.id, name: '', width: 0, height: 0, createdAt: obs.updatedAt, remoteFull: p.full, remoteThumb: p.thumb });
+        : {
+          id: p.id, obsId: obs.id, name: '', width: 0, height: 0, createdAt: obs.updatedAt, remoteFull: p.full, remoteThumb: p.thumb,
+          ...(p.kind === 'video' ? { kind: 'video' as const, mime: p.mime } : {}),
+        });
     }
   }
   // Devices still on an older version send the one-species shape.

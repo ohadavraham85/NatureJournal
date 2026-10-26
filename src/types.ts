@@ -22,8 +22,10 @@ export interface Observation {
   /** The species seen — one observation (place + time) can hold several. */
   entries: SpeciesEntry[];
   note: string;
-  /** Media ids, in display order — the first is the cover photo. */
+  /** Media ids (photos and video clips), in display order — the first is the cover. */
   photoIds: string[];
+  /** Which of photoIds are video clips. */
+  videoIds?: string[];
   createdAt: string;
   updatedAt: string;
   /** Who reported it, in a shared journal (see sync/). Absent = this device's owner. */
@@ -65,6 +67,11 @@ export interface MediaRecord {
   blob?: Blob;
   /** Small preview for grids. */
   thumb?: Blob;
+  /** 'video' for a clip (blob = the clip as recorded, thumb = a still frame). */
+  kind?: 'photo' | 'video';
+  mime?: string;
+  /** Clip length in seconds. */
+  duration?: number;
   /** Cloud copies (Firebase Storage download URLs), once uploaded or synced. */
   remoteFull?: string;
   remoteThumb?: string;

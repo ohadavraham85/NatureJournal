@@ -9,6 +9,7 @@ import {
 } from '../db/repository';
 import { readExif } from '../lib/exif';
 import { processPhoto } from '../lib/image';
+import { isVideoFile, processVideo } from '../lib/video';
 import { thumbUrl } from '../lib/media-url';
 import { currentPosition, reverseGeocode } from '../lib/geo';
 import { icon } from '../lib/icons';
@@ -92,12 +93,13 @@ export function init(el: HTMLElement): void {
         <div class="photo-pick" id="f-photo-pick">
           <button type="button" class="photo-pick-main" id="f-pick">
             ${icon('camera', 36, 1.6)}
-            <strong>צילום או בחירת תמונה</strong>
+            <strong>צילום או בחירת תמונה / סרטון</strong>
             <span>התאריך והמיקום יילקחו מהתמונה</span>
           </button>
         </div>
-        <input type="file" id="f-file" accept="image/*" multiple hidden>
+        <input type="file" id="f-file" accept="image/*,video/*" multiple hidden>
         <input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
+        <input type="file" id="f-video" accept="video/*" capture="environment" hidden>
       </section>
 
       <section class="form-section">
@@ -120,9 +122,10 @@ export function init(el: HTMLElement): void {
   const form = qs<HTMLFormElement>(root, 'form');
   const fileInput = qs<HTMLInputElement>(root, '#f-file');
   const cameraInput = qs<HTMLInputElement>(root, '#f-camera');
+  const videoInput = qs<HTMLInputElement>(root, '#f-video');
 
   qs(root, '#f-pick').addEventListener('click', () => fileInput.click());
-  for (const inp of [fileInput, cameraInput]) {
+  for (const inp of [fileInput, cameraInput, videoInput]) {
     inp.addEventListener('change', () => {
       const files = Array.from(inp.files ?? []);
       inp.value = '';
@@ -201,11 +204,13 @@ export function init(el: HTMLElement): void {
     const remove = target.closest<HTMLElement>('[data-remove]');
     if (remove) {
       draft.photoIds = draft.photoIds.filter((id) => id !== remove.dataset.remove);
+      draft.videoIds = (draft.videoIds ?? []).filter((id) => id !== remove.dataset.remove);
       paintPhotos();
       return;
     }
     if (target.closest('.photo-add')) fileInput.click();
     else if (target.closest('.photo-add-camera')) cameraInput.click();
+    else if (target.closest('.photo-add-video')) videoInput.click();
   });
 
   form.addEventListener('submit', (e) => { e.preventDefault(); void save(); });
@@ -224,7 +229,7 @@ export async function activate(): Promise<void> {
   placeTouched = false;
   const existing = editId ? await getObservation(editId) : undefined;
   draft = existing
-    ? { ...existing, photoIds: [...existing.photoIds], entries: existing.entries.map((e) => ({ ...e })) }
+    ? { ...existing, photoIds: [...existing.photoIds], videoIds: [...(existing.videoIds ?? [])], entries: existing.entries.map((e) => ({ ...e })) }
     : blankDraft();
   if (existing) placeTouched = true;
   else if (prefill.prefillCategory) {
@@ -266,18 +271,24 @@ async function addPhotos(files: File[]): Promise<void> {
   strip.classList.add('busy');
   try {
     for (const [i, file] of files.entries()) {
-      // The first photo of a report sets its time and place.
+      const video = isVideoFile(file);
+      // The first photo of a report sets its time and place (a video only its time).
       if (wasEmpty && i === 0) {
-        const exif = await readExif(file);
+        const exif = video ? { date: null, lat: null, lng: null } : await readExif(file);
         if (mySession !== session) return;
         applyPhotoMetadata(exif.date, exif.lat, exif.lng, file);
       }
-      const rec = await processPhoto(file);
-      if (mySession !== session) return;
-      await addMedia(rec);
-      addedPhotoIds.push(rec.id);
-      draft.photoIds.push(rec.id);
-      paintPhotos();
+      try {
+        const rec = video ? await processVideo(file) : await processPhoto(file);
+        if (mySession !== session) return;
+        await addMedia(rec);
+        addedPhotoIds.push(rec.id);
+        draft.photoIds.push(rec.id);
+        if (video) draft.videoIds = [...(draft.videoIds ?? []), rec.id];
+        paintPhotos();
+      } catch (err) {
+        toast(`${file.name}: ${(err as Error).message}`, true, 5000);
+      }
     }
   } catch (err) {
     toast('לא ניתן לטעון את התמונה: ' + (err as Error).message, true);
@@ -317,10 +328,12 @@ function paintPhotos(): void {
   strip.innerHTML = draft.photoIds.map((id, i) => `
     <div class="photo-thumb${i === 0 ? ' cover' : ''}">
       <img alt="" data-id="${id}">
+      ${draft.videoIds?.includes(id) ? `<span class="play-badge">${icon('play', 22, 2)}</span>` : ''}
       <button type="button" class="photo-remove" data-remove="${id}" aria-label="הסרת התמונה">${icon('close', 16, 2.2)}</button>
     </div>`).join('') + `
     <button type="button" class="photo-add" aria-label="הוספת תמונה מהגלריה">${icon('image', 26, 1.6)}<span>עוד תמונה</span></button>
-    <button type="button" class="photo-add-camera" aria-label="צילום תמונה נוספת">${icon('camera', 26, 1.6)}<span>צילום</span></button>`;
+    <button type="button" class="photo-add-camera" aria-label="צילום תמונה נוספת">${icon('camera', 26, 1.6)}<span>צילום</span></button>
+    <button type="button" class="photo-add-video" aria-label="צילום סרטון">${icon('play', 26, 1.6)}<span>סרטון</span></button>`;
   strip.querySelectorAll<HTMLImageElement>('img[data-id]').forEach((img) => {
     void thumbUrl(img.dataset.id!).then((url) => { if (url) img.src = url; });
   });
