@@ -12,6 +12,7 @@ import { registerNav } from './lib/nav';
 import { refreshCatalogIfNeeded } from './lib/catalog';
 import { setupInstallPrompt } from './lib/install';
 import { initTheme } from './lib/theme';
+import { onStatus, resumeSync, type SyncStatus } from './sync/state';
 
 initTheme();
 setupInstallPrompt();
@@ -156,6 +157,28 @@ function setupClock(): void {
   setInterval(tick, 15000);
 }
 
+/** Small status pill in the top bar while a shared journal is connected. */
+function setupSyncPill(): void {
+  const pill = document.getElementById('sync-pill')!;
+  const content = (s: SyncStatus): string => {
+    switch (s.state) {
+      case 'synced': return icon('check', 14, 2.4) + ' מסונכרן';
+      case 'connecting': return icon('refresh', 14, 2) + (s.pending ? ` ${s.pending} ממתינים` : ' מסנכרן');
+      case 'offline': return s.pending ? `${s.pending} ממתינים` : '';
+      case 'error': return 'שגיאת סנכרון';
+      default: return '';
+    }
+  };
+  onStatus((s) => {
+    const html = content(s);
+    pill.innerHTML = html;
+    pill.hidden = !html;
+    pill.className = `sync-pill sync-${s.state}`;
+    pill.title = s.message ?? '';
+  });
+  pill.addEventListener('click', () => navigate('settings', { section: 'backup' }));
+}
+
 function setupNetStatus(): void {
   const pill = document.getElementById('offline-pill')!;
   const paint = (): void => { pill.hidden = navigator.onLine; };
@@ -267,6 +290,7 @@ async function init(): Promise<void> {
   setupNav();
   setupClock();
   setupNetStatus();
+  setupSyncPill();
   setupWhatsNewButton();
   setupUpdates();
 
@@ -279,7 +303,15 @@ async function init(): Promise<void> {
   });
 
   // A reload always lands on Home: per-view params live only in memory.
+  // An invite link (?join=nj-…) opens the shared-journal settings instead.
+  const join = new URLSearchParams(location.search).get('join');
   await showView(HOME_VIEW, undefined, 'replace');
+  if (join) {
+    history.replaceState(history.state, '', location.pathname + location.hash);
+    navigate('settings', { section: 'backup', join });
+  }
+
+  void resumeSync().catch((err: unknown) => console.warn('sync', err));
 
   // Species catalog: downloaded on first run, refreshed when stale.
   void refreshCatalogIfNeeded();

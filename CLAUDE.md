@@ -25,6 +25,19 @@
   names, `locale=he`) into the Dexie `taxa` table; queries live in
   `src/data/catalog-sources.ts`. The cloud sandbox can't reach iNaturalist or
   Wikipedia — test with mocked routes in Playwright.
-- Roadmap: stage 1 (report form, journal, offline PWA) is done; next — map +
-  gallery (Leaflet), export/backup, sync between the user's devices (Firebase,
-  as in Birds), maybe sharing later.
+- Shared journal / sync: `src/sync/` — `state.ts` (always loaded: me, journal
+  code, outbox, members, status) and `engine.ts` (Firestore + Storage, lazily
+  imported only when a journal code is set). Uses the Birds journal's Firebase
+  project (`ohad-avraham-birding-log`), whose rules allow
+  `households/{code}/**`: docs in `nature_observations` / `nature_members`,
+  photos in Storage `households/{code}/nature-media/`. Codes start with `nj-`.
+  Reports carry `reporterId`/`reporterName`; deletes are tombstones
+  (`deleted: true`); last edit wins by `updatedAt`.
+- Testing sync here: the sandbox proxy breaks Chromium's requests to Firebase
+  Storage (curl works) — relay them through curl in Playwright routes. Use
+  throwaway `nj-` codes and delete their docs/objects afterwards; never list
+  `households/` (other people's journals).
+- Settings are split into sections (`views/settings.ts`); appearance lives in
+  `lib/theme.ts` + the boot script in `index.html`; backup/CSV in `lib/backup.ts`.
+- Roadmap: done — report form, journal, offline PWA, species catalog, settings
+  (design/export/backup), shared journal sync. Next — map + gallery (Leaflet).

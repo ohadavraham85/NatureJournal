@@ -6,6 +6,7 @@
 import { db } from '../db/database';
 import { category } from '../data/categories';
 import type { MediaRecord, Observation } from '../types';
+import { getSyncCode, loadEngine, queueForSync } from '../sync/state';
 
 const BACKUP_APP = 'nature-journal';
 const BACKUP_FORMAT = 1;
@@ -30,7 +31,7 @@ function localDateTime(iso: string): string {
 }
 
 export async function buildCsv(): Promise<File> {
-  const obs = (await db.observations.toArray()).sort((a, b) => (a.dateTime < b.dateTime ? -1 : 1));
+  const obs = (await db.observations.filter((o) => !o.deleted).toArray()).sort((a, b) => (a.dateTime < b.dateTime ? -1 : 1));
   const rows: unknown[][] = [[
     'תאריך ושעה', 'קטגוריה', 'מין', 'שם מדעי', 'כמות', 'לא בטוח בזיהוי', 'מקום', 'קו רוחב', 'קו אורך', 'הערה', 'תמונות',
   ]];
@@ -57,7 +58,7 @@ export interface BackupInfo { file: File; observations: number; photos: number }
 /** Built from many Blob parts rather than one giant string, so a large photo
  * collection doesn't exhaust the phone's memory. */
 export async function buildBackup(): Promise<BackupInfo> {
-  const observations = await db.observations.toArray();
+  const observations = await db.observations.filter((o) => !o.deleted).toArray();
   const head = JSON.stringify({ app: BACKUP_APP, format: BACKUP_FORMAT, exportedAt: new Date().toISOString(), observations });
   const parts: BlobPart[] = [head.slice(0, -1), ',"media":['];
   let photos = 0;
@@ -65,7 +66,12 @@ export async function buildBackup(): Promise<BackupInfo> {
   let written = 0;
   for (const m of await db.media.where('obsId').notEqual('').toArray()) {
     const { blob, thumb, ...meta } = m;
-    parts.push((written++ ? ',' : '') + JSON.stringify({ ...meta, blob: await blobToDataUrl(blob), thumb: await blobToDataUrl(thumb) }));
+    parts.push((written++ ? ',' : '') + JSON.stringify({
+      ...meta,
+      // A photo synced from another device may exist only in the cloud — its links are kept instead.
+      blob: blob ? await blobToDataUrl(blob) : '',
+      thumb: thumb ? await blobToDataUrl(thumb) : '',
+    }));
   }
   parts.push(']}');
   try { localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString()); } catch { /* storage blocked */ }
@@ -114,13 +120,21 @@ export async function restoreBackup({ data }: ParsedBackup): Promise<number> {
   const media: MediaRecord[] = [];
   for (const m of data.media ?? []) {
     if (!wanted.has(m.id)) continue;
-    const [blob, thumb] = await Promise.all([fetch(m.blob).then((r) => r.blob()), fetch(m.thumb).then((r) => r.blob())]);
+    const [blob, thumb] = await Promise.all([
+      m.blob ? fetch(m.blob).then((r) => r.blob()) : undefined,
+      m.thumb ? fetch(m.thumb).then((r) => r.blob()) : undefined,
+    ]);
     media.push({ ...m, blob, thumb });
   }
   await db.transaction('rw', db.observations, db.media, async () => {
     await db.media.bulkPut(media);
     await db.observations.bulkPut(incoming);
   });
+  // In a shared journal, restored reports go up to the cloud too.
+  if (await getSyncCode()) {
+    await queueForSync(incoming.map((o) => o.id));
+    void loadEngine().then((e) => e.flush());
+  }
   return incoming.length;
 }
 

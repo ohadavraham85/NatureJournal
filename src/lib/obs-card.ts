@@ -4,15 +4,16 @@ import { category, categoryIcon } from '../data/categories';
 import { escapeHtml } from './escape';
 import { fmtShortDate } from './ui';
 import type { Observation } from '../types';
+import { reporterName } from '../sync/state';
 
 export function displayName(o: Observation): string {
   return o.species.trim() || `${category(o.category).label} — לא מזוהה`;
 }
 
-export function obsCardHtml(o: Observation): string {
+export function obsCardHtml(o: Observation, showReporter = false): string {
   const c = category(o.category);
   const cover = o.photoIds[0];
-  const meta = [o.place, fmtShortDate(o.dateTime)].filter(Boolean).map(escapeHtml).join(' · ');
+  const meta = [showReporter ? reporterName(o) : '', o.place, fmtShortDate(o.dateTime)].filter(Boolean).map(escapeHtml).join(' · ');
   return `
     <button type="button" class="obs-card" data-id="${o.id}" style="--cat:${c.color};--cat-tint:${c.tint}">
       <span class="obs-photo">
@@ -30,10 +31,10 @@ export function obsCardHtml(o: Observation): string {
 }
 
 /** A full-width horizontal row: photo on the side, name, place · date, category. */
-export function obsStripHtml(o: Observation): string {
+export function obsStripHtml(o: Observation, showReporter = false): string {
   const c = category(o.category);
   const cover = o.photoIds[0];
-  const meta = [o.place, fmtShortDate(o.dateTime)].filter(Boolean).map(escapeHtml).join(' · ');
+  const meta = [showReporter ? reporterName(o) : '', o.place, fmtShortDate(o.dateTime)].filter(Boolean).map(escapeHtml).join(' · ');
   return `
     <button type="button" class="obs-strip" data-id="${o.id}" style="--cat:${c.color};--cat-tint:${c.tint}">
       <span class="strip-photo">

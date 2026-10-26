@@ -48,6 +48,9 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The Firebase chunk (loaded only for shared journals) is large; it
+        // still has to be precached so syncing works after an offline start.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       devOptions: {
         enabled: true,

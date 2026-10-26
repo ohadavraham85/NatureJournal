@@ -14,6 +14,8 @@ export interface ViewParams {
   search?: string;
   /** settings: which section to open (absent = the section list). */
   section?: string;
+  /** settings: a journal code from an invite link, to offer joining. */
+  join?: string;
 }
 
 export interface View {

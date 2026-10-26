@@ -12,6 +12,7 @@ import { icon } from '../lib/icons';
 import { confirmDialog, fmtCoords, fmtDateTime, showImageModal, toast } from '../lib/ui';
 import { goBack, navigate } from '../lib/nav';
 import type { ViewParams } from './view';
+import { canEdit, getMe, reporterName } from '../sync/state';
 
 let root: HTMLElement;
 let viewId = '';
@@ -39,6 +40,8 @@ export async function activate(): Promise<void> {
     return;
   }
   const c = category(o.category);
+  const me = await getMe();
+  const mine = canEdit(o, me);
   const coords = fmtCoords(o.lat, o.lng);
   const mapsUrl = o.lat != null && o.lng != null ? `https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}` : '';
   root.innerHTML = `
@@ -57,13 +60,14 @@ export async function activate(): Promise<void> {
           <div><dt>${icon('clock', 18)}</dt><dd>${fmtDateTime(o.dateTime)}</dd></div>
           <div><dt>${icon('pin', 18)}</dt><dd>${o.place ? escapeHtml(o.place) : 'ללא שם מקום'}${coords ? `<br><a href="${mapsUrl}" target="_blank" rel="noopener" dir="ltr" class="coords">${coords}</a>` : ''}</dd></div>
           <div><dt>כמות</dt><dd>${o.quantity}</dd></div>
+          ${reporterName(o) ? `<div><dt>דיווח</dt><dd>${escapeHtml(reporterName(o))}${o.reporterId === me.id ? ' (אני)' : ''}</dd></div>` : ''}
         </dl>
         ${o.note ? `<div class="detail-note">${escapeHtml(o.note).replace(/\n/g, '<br>')}</div>` : ''}
         ${o.species.trim() ? `<button type="button" class="btn btn-soft" id="d-info">${icon('info', 18)} מידע על המין</button>` : ''}
-        <div class="detail-actions">
+        ${mine ? `<div class="detail-actions">
           <button type="button" class="btn btn-primary" id="d-edit">${icon('edit', 18)} עריכה</button>
           <button type="button" class="btn btn-danger" id="d-delete">${icon('trash', 18)} מחיקה</button>
-        </div>
+        </div>` : '<p class="hint">רק מי שדיווח יכול לערוך או למחוק את הדיווח.</p>'}
       </div>
     </article>`;
   root.querySelectorAll<HTMLImageElement>('img[data-full]').forEach((img) => {
