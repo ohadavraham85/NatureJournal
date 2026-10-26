@@ -3,7 +3,8 @@
 
 import { category, categoryIcon } from '../data/categories';
 import { deleteObservation, getObservation, listObservations } from '../db/repository';
-import { photoUrl, thumbUrl } from '../lib/media-url';
+import { hydrateThumbs, photoUrl, thumbUrl } from '../lib/media-url';
+import { openViewer } from '../lib/viewer';
 import { findTaxonByName, getTaxon } from '../lib/catalog';
 import { openSpeciesCard } from '../lib/species-info';
 import { entryName, obsTitle, primaryCategory } from '../lib/observation';
@@ -21,6 +22,8 @@ export function init(el: HTMLElement): void {
   root = el;
   root.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
+    const media = t.closest<HTMLElement>('[data-media]');
+    if (media) { void openMedia(media.dataset.media!); return; }
     const img = t.closest<HTMLImageElement>('.detail-photos img');
     if (img?.src) { showImageModal(img.src); return; }
     const info = t.closest<HTMLElement>('[data-info]');
@@ -46,6 +49,9 @@ export async function activate(): Promise<void> {
   const coords = fmtCoords(o.lat, o.lng);
   const mapsUrl = o.lat != null && o.lng != null ? `https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}` : '';
   const who = reporterName(o);
+  // Media not tied to a species (reports from before per-species photos) shows on top.
+  const assigned = new Set(o.entries.flatMap((e) => e.mediaIds ?? []));
+  const loose = o.photoIds.filter((id) => !assigned.has(id));
   root.innerHTML = `
     <article class="detail" style="--cat:${c.color};--cat-tint:${c.tint}">
       <div class="detail-where">
@@ -53,8 +59,8 @@ export async function activate(): Promise<void> {
           ${coords ? `<a href="${mapsUrl}" target="_blank" rel="noopener" dir="ltr" class="coords">${coords}</a>` : ''}</div></div>
         <div class="detail-when">${icon('clock', 18)} ${fmtDateTime(o.dateTime)}${who ? ` · ${escapeHtml(who)}${isMe(o.reporterId, me) ? ' (אני)' : ''}` : ''}</div>
       </div>
-      ${o.photoIds.length
-        ? `<div class="detail-photos${o.photoIds.length > 1 ? ' multi' : ''}">${o.photoIds.map((id) => o.videoIds?.includes(id)
+      ${loose.length
+        ? `<div class="detail-photos${loose.length > 1 ? ' multi' : ''}">${loose.map((id) => o.videoIds?.includes(id)
           ? `<video controls playsinline preload="metadata" data-video="${id}" aria-label="סרטון"></video>`
           : `<img alt="${escapeHtml(obsTitle(o))}" data-full="${id}">`).join('')}</div>`
         : ''}
@@ -72,6 +78,11 @@ export async function activate(): Promise<void> {
                   <span class="strip-tags"><span class="cat-tag">${ec.label}</span>${e.uncertain ? '<span class="uncertain-tag">לא בטוח בזיהוי</span>' : ''}</span>
                 </span>
                 ${e.species.trim() ? `<button type="button" class="btn btn-sm btn-soft" data-info="${e.id}" aria-label="מידע על ${escapeHtml(entryName(e))}">${icon('info', 16)} מידע</button>` : ''}
+                ${e.mediaIds?.length ? `<span class="entry-media-view">${e.mediaIds.map((id) => `
+                  <button type="button" class="entry-thumb" data-media="${id}" aria-label="הצגה במסך מלא">
+                    <img alt="" data-thumb="${id}">${o.videoIds?.includes(id) ? `<span class="play-badge small">${icon('play', 14, 2)}</span>` : ''}
+                  </button>`).join('')}</span>` : ''}
+                ${e.note ? `<span class="entry-note">${escapeHtml(e.note).replace(/\n/g, '<br>')}</span>` : ''}
               </li>`;
           }).join('')}
         </ul>
@@ -82,6 +93,7 @@ export async function activate(): Promise<void> {
         </div>` : '<p class="hint">רק מי שדיווח (או מנהל היומן) יכול לערוך או למחוק את הדיווח.</p>'}
       </div>
     </article>`;
+  hydrateThumbs(root);
   root.querySelectorAll<HTMLImageElement>('img[data-full]').forEach((img) => {
     void photoUrl(img.dataset.full!).then((url) => { if (url) img.src = url; });
   });
@@ -89,6 +101,14 @@ export async function activate(): Promise<void> {
     void thumbUrl(v.dataset.video!).then((url) => { if (url) v.poster = url; });
     void photoUrl(v.dataset.video!).then((url) => { if (url) v.src = url; });
   });
+}
+
+/** A species photo opens the full-screen viewer over all of the observation's media. */
+async function openMedia(mediaId: string): Promise<void> {
+  const o = await getObservation(viewId);
+  if (!o) return;
+  const list = o.photoIds.map((id) => ({ mediaId: id, video: !!o.videoIds?.includes(id), obs: o }));
+  openViewer(list, Math.max(0, o.photoIds.indexOf(mediaId)));
 }
 
 async function openInfo(entryId: string): Promise<void> {

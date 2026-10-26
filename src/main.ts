@@ -197,6 +197,23 @@ function setupSyncPill(): void {
   pill.addEventListener('click', () => navigate('settings', { section: 'backup' }));
 }
 
+/** Keeps the scrolling area exactly between the top bar and the tab bar,
+ * whatever their real height (a wrapped greeting, the sync pill, a large
+ * text size in Settings ← עיצוב). */
+function trackBarHeights(): void {
+  const root = document.documentElement;
+  const topbar = document.querySelector<HTMLElement>('.topbar')!;
+  const tabbar = document.querySelector<HTMLElement>('.tabbar')!;
+  const update = (): void => {
+    root.style.setProperty('--topbar-real', `${topbar.offsetHeight}px`);
+    root.style.setProperty('--tabbar-real', `${tabbar.offsetHeight}px`);
+  };
+  const ro = new ResizeObserver(update);
+  ro.observe(topbar);
+  ro.observe(tabbar);
+  update();
+}
+
 function setupNetStatus(): void {
   const pill = document.getElementById('offline-pill')!;
   const paint = (): void => { pill.hidden = navigator.onLine; };
@@ -296,6 +313,7 @@ function setupUpdates(): void {
 
 async function init(): Promise<void> {
   hydrateIcons(document.body);
+  trackBarHeights();
   await purgeOrphanMedia();
   // Ask once to keep the local database safe from storage eviction —
   // installed PWAs usually get this granted silently.
