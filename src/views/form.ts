@@ -13,7 +13,8 @@ import { currentPosition, reverseGeocode } from '../lib/geo';
 import { icon } from '../lib/icons';
 import { escapeHtml } from '../lib/escape';
 import { qs } from '../lib/dom';
-import { findTaxonByName, getTaxon, searchTaxa, taxaInCategory, taxonName } from '../lib/catalog';
+import { allTaxa, findTaxonByName, getTaxon, taxonName } from '../lib/catalog';
+import { wireCombo, type ComboItem } from '../lib/combo';
 import { confirmDialog, fmtCoords, fromLocalInputValue, toast, toLocalInputValue } from '../lib/ui';
 import { goBack, navigate } from '../lib/nav';
 import type { DateSource, LocationSource, Observation, Taxon } from '../types';
@@ -29,8 +30,10 @@ let draft: Observation;
 let addedPhotoIds: string[] = [];
 /** True once the user typed a place name themselves, so a later reverse-geocode doesn't overwrite it. */
 let placeTouched = false;
-let allSpecies: string[] = [];
-/** The chosen category's species catalog (downloaded from iNaturalist). */
+/** My past species names per category, most reported first ('' = all). */
+let mySpecies = new Map<string, string[]>();
+let myPlaces: string[] = [];
+/** The whole species catalog (downloaded from iNaturalist). */
 let catalog: Taxon[] = [];
 let saving = false;
 /** Bumped on every reset so a slow GPS fix from an earlier form session is ignored. */
@@ -73,17 +76,16 @@ export function init(el: HTMLElement): void {
         <div class="cat-picker" id="f-cats">
           ${CATEGORIES.map((c) => `
             <button type="button" class="cat-btn" data-cat="${c.id}" aria-pressed="false" style="--cat:${c.color};--cat-tint:${c.tint}">
-              <span class="cat-circle">${categoryIcon(c.id, 26)}</span>
-              <span class="cat-label">${c.short}</span>
+              <span class="cat-icon">${categoryIcon(c.id, 22)}</span>
+              <span class="cat-label">${c.label}</span>
             </button>`).join('')}
         </div>
       </fieldset>
 
       <div class="field">
         <label for="f-species">שם המין</label>
-        <input id="f-species" type="text" autocomplete="off" enterkeyhint="next" placeholder="למשל: שועל מצוי">
+        <div class="combo"><input id="f-species" type="text" enterkeyhint="next" placeholder="מקלידים ובוחרים מהרשימה, למשל: שועל"></div>
         <span class="sci-link" id="f-sci" hidden></span>
-        <div class="suggest" id="f-suggest"></div>
       </div>
 
       <div class="field-row">
@@ -100,8 +102,7 @@ export function init(el: HTMLElement): void {
         <div class="ww-row">
           <span class="ww-icon">${icon('pin', 18)}</span>
           <div class="ww-main">
-            <input id="f-place" type="text" list="f-places" autocomplete="off" placeholder="שם המקום" aria-label="שם המקום">
-            <datalist id="f-places"></datalist>
+            <div class="combo combo-inline"><input id="f-place" type="text" placeholder="שם המקום" aria-label="שם המקום"></div>
             <span class="ww-meta" id="f-coords"></span>
           </div>
           <button type="button" class="btn btn-sm btn-soft" id="f-gps" title="שימוש במיקום הנוכחי">${icon('crosshair', 16)} מיקום נוכחי</button>
@@ -145,23 +146,23 @@ export function init(el: HTMLElement): void {
     if (draft.category !== btn.dataset.cat) unlinkTaxon();
     draft.category = btn.dataset.cat as CategoryId;
     paintCategory();
-    void refreshSuggestions();
   });
 
   const speciesInput = qs<HTMLInputElement>(root, '#f-species');
   speciesInput.addEventListener('input', () => {
     draft.species = speciesInput.value;
     unlinkTaxon();
-    paintSuggestions();
   });
-  qs(root, '#f-suggest').addEventListener('click', (e) => {
-    const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-name]');
-    if (!chip) return;
-    const taxon = chip.dataset.taxon ? catalog.find((t) => t.id === Number(chip.dataset.taxon)) : undefined;
-    if (taxon) linkTaxon(taxon);
-    else { draft.species = chip.dataset.name!; unlinkTaxon(); }
-    speciesInput.value = draft.species;
-    paintSuggestions();
+  wireCombo(speciesInput, {
+    scrollOnFocus: true,
+    getGroups: speciesGroups,
+    emptyText: 'אין התאמה — אפשר להשאיר את השם כפי שהוקלד',
+    onSelect: (item) => {
+      const taxon = item.data ? catalog.find((t) => t.id === Number(item.data)) : undefined;
+      if (taxon) linkTaxon(taxon);
+      else { draft.species = item.value; unlinkTaxon(); }
+      speciesInput.value = draft.species;
+    },
   });
 
   const qty = qs<HTMLInputElement>(root, '#f-qty');
@@ -176,6 +177,11 @@ export function init(el: HTMLElement): void {
 
   const place = qs<HTMLInputElement>(root, '#f-place');
   place.addEventListener('input', () => { draft.place = place.value; placeTouched = true; });
+  wireCombo(place, {
+    scrollOnFocus: true,
+    getGroups: () => [{ title: 'מקומות קודמים', items: myPlaces.map((p) => ({ value: p, label: p })), limit: 12, emptyLimit: 8 }],
+    onSelect: (item) => { draft.place = item.value; placeTouched = true; },
+  });
 
   qs(root, '#f-gps').addEventListener('click', () => void useCurrentLocation(true));
 
@@ -240,8 +246,8 @@ export async function activate(): Promise<void> {
   paintWhereWhen();
   paintSci();
 
-  qs(root, '#f-places').innerHTML = (await placeSuggestions()).map((p) => `<option value="${escapeHtml(p)}"></option>`).join('');
-  await refreshSuggestions();
+  [myPlaces, catalog] = await Promise.all([placeSuggestions(), allTaxa()]);
+  mySpecies = new Map(await Promise.all(['', ...CATEGORIES.map((c) => c.id)].map(async (id) => [id, await speciesSuggestions(id || undefined)] as const)));
 
   // A new report gets the current position right away, so it's ready even
   // without a photo; a photo with its own GPS replaces it.
@@ -331,36 +337,48 @@ function paintCategory(): void {
   });
 }
 
-async function refreshSuggestions(): Promise<void> {
-  // Names from the chosen category first, then everything else.
-  const inCat = draft.category ? await speciesSuggestions(draft.category) : [];
-  const all = await speciesSuggestions();
-  allSpecies = [...new Set([...inCat, ...all])];
-  catalog = draft.category ? await taxaInCategory(draft.category) : [];
-  paintSuggestions();
+/** Pick-list groups for the species field: my past names first, then the
+ * catalog — the chosen category's species, or every category if none is
+ * chosen yet (picking one then sets the category too). */
+function speciesGroups(): Array<{ title: string; items: ComboItem[]; limit: number; emptyLimit: number }> {
+  const cat = draft.category;
+  const mine = mySpecies.get(cat) ?? [];
+  const mineSet = new Set(mine);
+  return [
+    { title: 'מהדיווחים שלך', items: mine.map((n) => ({ value: n, label: n })), limit: 5, emptyLimit: 6 },
+    {
+      title: cat ? `${category(cat).label} בישראל` : 'מאגר המינים בישראל',
+      items: catalogItemsFor(cat).filter((it) => !mineSet.has(it.value)),
+      limit: 40, emptyLimit: 15,
+    },
+  ];
 }
 
-function paintSuggestions(): void {
-  const box = qs(root, '#f-suggest');
-  const q = draft.species.trim();
-  const mine = (q ? allSpecies.filter((n) => n.includes(q) && n !== q) : allSpecies).slice(0, q ? 4 : 6);
-  // Catalog suggestions: matches while typing, or the most common species
-  // of the category when nothing is typed and there are no past reports.
-  const fromCatalog = draft.taxonId || (!q && mine.length) ? [] : searchTaxa(catalog, q, q ? 8 : 6)
-    .filter((t) => !mine.includes(taxonName(t)) && taxonName(t) !== q);
-  let html = '';
-  if (mine.length) {
-    html += `<span class="suggest-label">${q ? 'מהדיווחים שלך:' : 'מינים אחרונים:'}</span>` +
-      mine.map((n) => `<button type="button" class="chip" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('');
-  }
-  if (fromCatalog.length) {
-    html += `<span class="suggest-label suggest-break">${q ? 'מהמאגר:' : 'נפוצים בישראל:'}</span>` +
-      fromCatalog.map((t) => `<button type="button" class="chip chip-taxon" data-name="${escapeHtml(taxonName(t))}" data-taxon="${t.id}">${escapeHtml(taxonName(t))}${taxonName(t) !== t.sci ? `<small dir="ltr">${escapeHtml(t.sci)}</small>` : ''}</button>`).join('');
-  }
-  box.innerHTML = html;
+/** Catalog rows per category, built once (most observed first) and reused on every keystroke. */
+let itemCache: { source: Taxon[]; byCat: Map<string, ComboItem[]> } = { source: [], byCat: new Map() };
+function catalogItemsFor(cat: string): ComboItem[] {
+  if (itemCache.source !== catalog) itemCache = { source: catalog, byCat: new Map() };
+  const cached = itemCache.byCat.get(cat);
+  if (cached) return cached;
+  const inCat = cat ? catalog.filter((t) => t.category === cat) : catalog;
+  const items: ComboItem[] = inCat.map((t) => ({
+    value: taxonName(t),
+    label: taxonName(t),
+    sub: [t.sci !== taxonName(t) ? t.sci : '', cat ? '' : category(t.category).label].filter(Boolean).join(' · '),
+    img: t.photo,
+    keys: [t.he, t.en, t.sci],
+    data: String(t.id),
+    weight: t.count,
+  })).sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
+  itemCache.byCat.set(cat, items);
+  return items;
 }
 
 function linkTaxon(t: Taxon): void {
+  if (draft.category !== t.category) {
+    draft.category = t.category;
+    paintCategory();
+  }
   draft.species = taxonName(t);
   draft.taxonId = t.id;
   draft.sci = t.sci;

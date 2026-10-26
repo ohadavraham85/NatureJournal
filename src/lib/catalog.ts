@@ -7,6 +7,7 @@ import { db } from '../db/database';
 import { CATEGORIES, type CategoryId } from '../data/categories';
 import { CATALOG_MAX_AGE_DAYS, CATALOG_QUERIES, ISRAEL_BOUNDS, MAX_SPECIES_PER_CATEGORY } from '../data/catalog-sources';
 import type { Taxon } from '../types';
+import { bestScore } from './fuzzy';
 
 const API = 'https://api.inaturalist.org/v1/observations/species_counts';
 const PER_PAGE = 500;
@@ -155,16 +156,14 @@ export function taxonName(t: Taxon): string {
   return t.he || t.en || t.sci;
 }
 
-/** Ranks catalog species against a typed query: prefix matches first, then
- * matches anywhere; ties broken by how commonly observed. */
+/** Ranks catalog species against a typed query with forgiving spelling
+ * (see fuzzy.ts); ties broken by how commonly observed. */
 export function searchTaxa(taxa: Taxon[], query: string, limit: number): Taxon[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [...taxa].sort((a, b) => b.count - a.count).slice(0, limit);
+  if (!query.trim()) return [...taxa].sort((a, b) => b.count - a.count).slice(0, limit);
   const scored: Array<[number, Taxon]> = [];
   for (const t of taxa) {
-    const fields = [t.he, t.en.toLowerCase(), t.sci.toLowerCase()];
-    if (fields.some((f) => f.startsWith(q))) scored.push([0, t]);
-    else if (fields.some((f) => f.includes(q))) scored.push([1, t]);
+    const s = bestScore(query, [t.he, t.en, t.sci]);
+    if (s !== null) scored.push([s, t]);
   }
   return scored.sort((a, b) => a[0] - b[0] || b[1].count - a[1].count).slice(0, limit).map(([, t]) => t);
 }
