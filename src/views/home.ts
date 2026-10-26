@@ -3,7 +3,7 @@
 
 import { CATEGORIES, categoryIcon } from '../data/categories';
 import { listObservations } from '../db/repository';
-import { obsCardHtml } from '../lib/obs-card';
+import { obsStripHtml } from '../lib/obs-card';
 import { hydrateThumbs } from '../lib/media-url';
 import { icon } from '../lib/icons';
 import { navigate } from '../lib/nav';
@@ -16,7 +16,7 @@ export function init(el: HTMLElement): void {
   onInstallStateChanged(() => { if (!root.hidden) void activate(); });
   root.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
-    const card = t.closest<HTMLElement>('.obs-card');
+    const card = t.closest<HTMLElement>('.obs-strip');
     if (card) { navigate('detail', { viewId: card.dataset.id! }); return; }
     const tile = t.closest<HTMLElement>('[data-cat-tile]');
     if (tile) { navigate('journal', { category: tile.dataset.catTile!, search: '' }); return; }
@@ -60,7 +60,7 @@ export async function activate(): Promise<void> {
       <div class="cat-tiles">
         ${CATEGORIES.map((c) => `
           <button type="button" class="cat-tile" data-cat-tile="${c.id}" style="--cat:${c.color};--cat-tint:${c.tint}">
-            <span class="cat-circle">${categoryIcon(c.id, 22)}</span>
+            <span class="cat-icon">${categoryIcon(c.id, 22)}</span>
             <span class="cat-tile-label">${c.label}</span>
             <strong>${counts.get(c.id) ?? 0}</strong>
           </button>`).join('')}
@@ -68,9 +68,9 @@ export async function activate(): Promise<void> {
     </section>
 
     <section>
-      <div class="title-row"><h3>דיווחים אחרונים</h3>${all.length > 4 ? '<button type="button" class="link-btn" data-all>לכל היומן</button>' : ''}</div>
+      <div class="title-row"><h3>דיווחים אחרונים</h3>${all.length > 5 ? '<button type="button" class="link-btn" data-all>לכל היומן</button>' : ''}</div>
       ${all.length
-        ? `<div class="obs-grid">${all.slice(0, 4).map(obsCardHtml).join('')}</div>`
+        ? `<div class="obs-strips">${all.slice(0, 5).map(obsStripHtml).join('')}</div>`
         : `<div class="empty">${icon('leaf', 48, 1.4)}<p>עוד אין דיווחים — זה הזמן לצאת לטבע.</p></div>`}
     </section>`;
   hydrateThumbs(root);

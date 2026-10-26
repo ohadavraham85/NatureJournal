@@ -3,7 +3,9 @@
 
 import { CATEGORIES, category } from '../data/categories';
 import { listObservations } from '../db/repository';
-import { obsCardHtml } from '../lib/obs-card';
+import { obsCardHtml, obsStripHtml } from '../lib/obs-card';
+import { wireCombo, type ComboItem } from '../lib/combo';
+import { bestScore } from '../lib/fuzzy';
 import { hydrateThumbs } from '../lib/media-url';
 import { icon } from '../lib/icons';
 import { qs } from '../lib/dom';
@@ -15,6 +17,12 @@ let root: HTMLElement;
 let filterCat = '';
 let search = '';
 let all: Observation[] = [];
+const LAYOUT_KEY = 'journalLayout';
+let layout: 'strips' | 'grid' = readLayout();
+
+function readLayout(): 'strips' | 'grid' {
+  try { return localStorage.getItem(LAYOUT_KEY) === 'grid' ? 'grid' : 'strips'; } catch { return 'strips'; }
+}
 
 export function init(el: HTMLElement): void {
   root = el;
@@ -23,8 +31,12 @@ export function init(el: HTMLElement): void {
       <div class="title-row">
         <h2>היומן שלי</h2>
         <span class="muted" id="j-count"></span>
+        <span class="layout-toggle" role="group" aria-label="תצוגה">
+          <button type="button" data-layout="strips" aria-label="רצועות">${icon('list', 20)}</button>
+          <button type="button" data-layout="grid" aria-label="רשת תמונות">${icon('grid', 20)}</button>
+        </span>
       </div>
-      <label class="search">
+      <label class="search combo">
         ${icon('search', 18)}
         <input type="search" id="j-search" aria-label="חיפוש" placeholder="חיפוש (שם, מקום, הערות)...">
       </label>
@@ -38,6 +50,17 @@ export function init(el: HTMLElement): void {
 
   const input = qs<HTMLInputElement>(root, '#j-search');
   input.addEventListener('input', () => { search = input.value; render(); });
+  wireCombo(input, {
+    getGroups: suggestionGroups,
+    onSelect: (item) => { search = item.value; render(); input.blur(); },
+  });
+  root.querySelector('.layout-toggle')!.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-layout]');
+    if (!b) return;
+    layout = b.dataset.layout as typeof layout;
+    try { localStorage.setItem(LAYOUT_KEY, layout); } catch { /* storage blocked */ }
+    render();
+  });
 
   qs(root, '#j-chips').addEventListener('click', (e) => {
     const chip = (e.target as HTMLElement).closest<HTMLElement>('.filter-chip');
@@ -47,7 +70,7 @@ export function init(el: HTMLElement): void {
   });
 
   qs(root, '#j-grid').addEventListener('click', (e) => {
-    const card = (e.target as HTMLElement).closest<HTMLElement>('.obs-card');
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.obs-card, .obs-strip');
     if (card) navigate('detail', { viewId: card.dataset.id! });
   });
 }
@@ -66,23 +89,41 @@ export async function activate(): Promise<void> {
   render();
 }
 
+/** Names and places from my reports, for the search pick-list. */
+function suggestionGroups(): Array<{ title: string; items: ComboItem[]; limit: number }> {
+  const count = (vals: string[]): ComboItem[] => {
+    const m = new Map<string, number>();
+    for (const v of vals) if (v.trim()) m.set(v.trim(), (m.get(v.trim()) ?? 0) + 1);
+    return [...m.entries()].map(([v, n]) => ({ value: v, label: v, sub: `${n} דיווחים`, weight: n }));
+  };
+  return [
+    { title: 'מינים', items: count(all.map((o) => o.species)), limit: 6 },
+    { title: 'מקומות', items: count(all.map((o) => o.place)), limit: 4 },
+  ];
+}
+
 function matches(o: Observation, q: string): boolean {
   if (!q) return true;
-  return [o.species, o.sci ?? '', o.place, o.note, category(o.category).label].some((f) => f.toLowerCase().includes(q));
+  // Notes match as plain text; names and places also forgive typos.
+  if (o.note.toLowerCase().includes(q.toLowerCase())) return true;
+  const s = bestScore(q, [o.species, o.sci ?? '', o.place, category(o.category).label]);
+  return s !== null && s <= 5;
 }
 
 function render(): void {
   root.querySelectorAll<HTMLElement>('.filter-chip').forEach((c) => {
     c.setAttribute('aria-pressed', String(c.dataset.cat === filterCat));
   });
-  const q = search.trim().toLowerCase();
+  root.querySelectorAll<HTMLElement>('[data-layout]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
+  const q = search.trim();
   const shown = all.filter((o) => (!filterCat || o.category === filterCat) && matches(o, q));
   qs(root, '#j-count').textContent = shown.length === all.length
     ? `${all.length} דיווחים`
     : `${shown.length} מתוך ${all.length}`;
 
   const grid = qs(root, '#j-grid');
-  grid.innerHTML = shown.map(obsCardHtml).join('');
+  grid.className = layout === 'grid' ? 'obs-grid' : 'obs-strips';
+  grid.innerHTML = shown.map(layout === 'grid' ? obsCardHtml : obsStripHtml).join('');
   hydrateThumbs(grid);
 
   const empty = qs(root, '#j-empty');

@@ -13,6 +13,7 @@ import { escapeHtml } from '../lib/escape';
 import { icon } from '../lib/icons';
 import { qs } from '../lib/dom';
 import { fmtShortDate, toast } from '../lib/ui';
+import { matchScore } from '../lib/fuzzy';
 import type { Observation, Taxon } from '../types';
 
 /** The catalog list renders at most this many rows; search narrows it down. */
@@ -112,15 +113,15 @@ function render(): void {
 }
 
 function renderMine(): void {
-  const q = search.trim().toLowerCase();
+  const q = search.trim();
   const all = myStats();
-  const rows = all.filter((s) => (!filterCat || s.cat === filterCat) && (!q || s.name.toLowerCase().includes(q)));
+  const rows = all.filter((s) => (!filterCat || s.cat === filterCat) && (!q || (matchScore(q, s.name) ?? 99) <= 5));
   qs(root, '#sp-count').textContent = rows.length === all.length ? `${all.length} מינים` : `${rows.length} מתוך ${all.length} מינים`;
   qs(root, '#sp-list').innerHTML = rows.length ? `<ul class="species-list">${rows.map((s) => {
     const c = category(s.cat);
     return `
       <li><button type="button" class="species-row" data-species="${escapeHtml(s.name)}" data-cat="${c.id}"${s.taxonId ? ` data-taxon="${s.taxonId}"` : ''} data-count="${s.count}" style="--cat:${c.color};--cat-tint:${c.tint}">
-        <span class="cat-circle small">${categoryIcon(c.id, 18)}</span>
+        <span class="cat-icon">${categoryIcon(c.id, 20)}</span>
         <span class="species-name">${escapeHtml(s.name)}<small>${c.label} · נראה לאחרונה ${fmtShortDate(s.last)}</small></span>
         <span class="species-count">${s.count}</span>
       </button></li>`;
