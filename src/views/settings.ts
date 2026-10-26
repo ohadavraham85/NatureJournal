@@ -21,7 +21,7 @@ import { confirmDialog, showModal, toast } from '../lib/ui';
 import { navigate } from '../lib/nav';
 import type { ViewParams } from './view';
 import {
-  getMe, getMembers, getStatus, isMe, getSyncCode, inviteLink, loadEngine, newJournalCode, onMembers, onStatus,
+  getMe, getMembers, getStatus, isAdmin, isMe, journalHasAdmin, getSyncCode, inviteLink, loadEngine, newJournalCode, onMembers, onStatus,
   parseJoinInput, setMe, setSyncCode, setStatus, type Me, type SyncStatus,
 } from '../sync/state';
 import type { Member } from '../types';
@@ -33,7 +33,7 @@ const SECTIONS: Section[] = [
   { id: 'design', title: 'עיצוב', desc: 'צבעים, גופן וגודל הטקסט', icon: 'palette' },
   { id: 'export', title: 'ייצוא', desc: 'טבלת הדיווחים לאקסל', icon: 'table' },
   { id: 'backup', title: 'סנכרון וגיבוי', desc: 'יומן משותף בין מכשירים ומדווחים, גיבוי ושחזור', icon: 'cloud' },
-  { id: 'catalog', title: 'מאגר המינים', desc: 'רשימת המינים של ישראל מ-iNaturalist', icon: 'database' },
+  { id: 'catalog', title: 'המאגר הביולוגי של ישראל', desc: 'כל המינים שנצפו בישראל, מ-iNaturalist', icon: 'database' },
   { id: 'misc', title: 'כללי', desc: 'התקנה, אחסון במכשיר, מה חדש וגרסה', icon: 'sliders' },
 ];
 
@@ -245,8 +245,11 @@ async function renderShared(): Promise<void> {
     <div class="members">
       <span class="field-label">המדווחים ביומן</span>
       ${(members.length ? members : [{ id: me.id, name: me.name || 'אני' } as Member]).map((m) => `
-        <span class="member-chip${isMe(m.id, me) ? ' me' : ''}">${escapeHtml(m.name || 'ללא שם')}${isMe(m.id, me) ? ' (אני)' : ''}</span>`).join('')}
+        <span class="member-chip${isMe(m.id, me) ? ' me' : ''}">${escapeHtml(m.name || 'ללא שם')}${isMe(m.id, me) ? ' (אני)' : ''}${m.admin ? ' · מנהל' : ''}</span>`).join('')}
     </div>
+    ${isAdmin(me) ? '<p class="hint">את/ה מנהל/ת היומן — אפשר לערוך ולמחוק כל תצפית.</p>' : journalHasAdmin() ? '' : `
+      <p class="hint">ליומן הזה עוד אין מנהל. מנהל יכול לערוך ולמחוק כל תצפית.</p>
+      <button type="button" class="btn btn-soft" id="sh-admin">${icon('check', 18)} הגדרה כמנהל היומן</button>`}
     <div class="btn-row">
       <button type="button" class="btn btn-primary" id="sh-invite">${icon('share', 18)} הזמנת מדווחים</button>
       <button type="button" class="btn btn-soft" id="sh-qr">${icon('qr', 18)} קוד QR</button>
@@ -257,7 +260,7 @@ async function renderShared(): Promise<void> {
     <button type="button" class="btn btn-ghost-dark" id="sh-leave">ניתוק המכשיר מהיומן המשותף</button>`;
 }
 
-async function startShared(code: string, me: Me): Promise<void> {
+async function startShared(code: string, me: Me, asCreator = false): Promise<void> {
   // Joining as an existing member swaps this device's id — keep the old one
   // as an alias so reports saved here before joining stay mine.
   const prev = await getMe();
@@ -267,14 +270,14 @@ async function startShared(code: string, me: Me): Promise<void> {
   joinPrefill = '';
   setStatus({ state: 'connecting' });
   const engine = await loadEngine();
-  await engine.start(code, me);
+  await engine.start(code, me, asCreator);
 }
 
 async function createShared(): Promise<void> {
   const name = root.querySelector<HTMLInputElement>('#sh-name')?.value.trim() ?? '';
   if (!name) { toast('כדאי לכתוב קודם את השם שלך', true); root.querySelector<HTMLInputElement>('#sh-name')?.focus(); return; }
   if (!navigator.onLine) { toast('צריך קליטה כדי ליצור יומן משותף', true); return; }
-  await startShared(newJournalCode(), { ...(await getMe()), name });
+  await startShared(newJournalCode(), { ...(await getMe()), name }, true);
   toast('היומן המשותף נוצר — אפשר להזמין מדווחים');
   await renderShared();
 }
@@ -436,7 +439,7 @@ async function renderCatalog(): Promise<void> {
   const updatedTimes = Object.values(meta.updated).filter(Boolean).sort() as string[];
   root.innerHTML = `
     <section class="card-section">
-      <h3>מאגר המינים</h3>
+      <h3>המאגר הביולוגי של ישראל</h3>
       <p class="hint">רשימת המינים שנצפו בישראל, עם שמות בעברית, מ-iNaturalist. משמשת לרשימת הבחירה בדיווח ולטאב "מינים", ועובדת גם בלי קליטה. מתעדכנת לבד כל חודשיים.</p>
       <dl class="kv">
         ${CATEGORIES.map((c) => `<div><dt>${c.label}</dt><dd data-cat-count="${c.id}">${counts.get(c.id) ? `${counts.get(c.id)} מינים` : 'לא הורד'}</dd></div>`).join('')}
@@ -457,7 +460,7 @@ async function updateCatalog(): Promise<void> {
     if (cell) cell.textContent = state === 'error' ? 'נכשל' : state === 'loading' ? `מוריד... ${count || ''}` : `${count} מינים`;
   };
   await downloadCatalog(undefined, progress);
-  toast(failed ? `העדכון נכשל ב-${failed} קטגוריות — אפשר לנסות שוב` : 'מאגר המינים עודכן', failed > 0);
+  toast(failed ? `העדכון נכשל ב-${failed} קטגוריות — אפשר לנסות שוב` : 'המאגר הביולוגי של ישראל עודכן', failed > 0);
   if (section === 'catalog') await renderCatalog();
 }
 
@@ -554,6 +557,10 @@ async function onClick(e: Event): Promise<void> {
     case 'sh-scan': await scanToJoin(); break;
     case 'sh-rename-save': await renameMe(); break;
     case 'sh-leave': await leaveShared(); break;
+    case 'sh-admin':
+      await (await loadEngine()).claimAdmin(await getMe());
+      toast('את/ה מנהל/ת היומן');
+      break;
     case 's-catalog': await updateCatalog(); break;
     case 's-install': await installApp(); break;
     case 's-persist': await requestPersist(); break;

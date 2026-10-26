@@ -44,7 +44,8 @@ export async function fetchMembers(journalCode: string): Promise<Member[]> {
   return snap.docs.map((d) => d.data() as Member).sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
 }
 
-export async function start(journalCode: string, who: Me): Promise<void> {
+/** `asCreator`: this device just created the journal — it becomes its admin. */
+export async function start(journalCode: string, who: Me, asCreator = false): Promise<void> {
   stop();
   code = journalCode;
   setStatus({ state: navigator.onLine ? 'connecting' : 'offline', message: undefined });
@@ -73,7 +74,11 @@ export async function start(journalCode: string, who: Me): Promise<void> {
 
   // Wait (briefly) for my member entry to reach the server, so someone
   // invited right after creating the journal already sees my name.
-  const memberWrite = setDoc(doc(memberCol(), who.id), clean({ id: who.id, name: who.name, joinedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }), { merge: true })
+  const now = new Date().toISOString();
+  const memberFields: Partial<Member> = { id: who.id, name: who.name, updatedAt: now };
+  if (firstTime) memberFields.joinedAt = now; // joining date is set once, not on every start
+  if (asCreator) memberFields.admin = true;
+  const memberWrite = setDoc(doc(memberCol(), who.id), clean(memberFields), { merge: true })
     .catch((err: Error) => setStatus({ state: 'error', message: err.message }));
   await Promise.race([memberWrite, new Promise((r) => setTimeout(r, 8000))]);
 
@@ -108,6 +113,12 @@ export function stop(): void {
   unsubs = [];
   code = '';
   setStatus({ state: 'off', message: undefined });
+}
+
+/** Makes me the journal's admin (offered only while it has none). */
+export async function claimAdmin(who: Me): Promise<void> {
+  if (!code) return;
+  await setDoc(doc(memberCol(), who.id), { admin: true, updatedAt: new Date().toISOString() }, { merge: true });
 }
 
 /** Renames me in the members list (the name on my future reports changes too). */

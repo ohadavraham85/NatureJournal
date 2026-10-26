@@ -77,7 +77,7 @@ export async function activate(): Promise<void> {
         ${mine ? `<div class="detail-actions">
           <button type="button" class="btn btn-primary" id="d-edit">${icon('edit', 18)} עריכה</button>
           <button type="button" class="btn btn-danger" id="d-delete">${icon('trash', 18)} מחיקה</button>
-        </div>` : '<p class="hint">רק מי שדיווח יכול לערוך או למחוק את הדיווח.</p>'}
+        </div>` : '<p class="hint">רק מי שדיווח (או מנהל היומן) יכול לערוך או למחוק את הדיווח.</p>'}
       </div>
     </article>`;
   root.querySelectorAll<HTMLImageElement>('img[data-full]').forEach((img) => {

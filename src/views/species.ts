@@ -34,7 +34,7 @@ export function init(el: HTMLElement): void {
     <div class="journal-head">
       <div class="segmented" role="tablist">
         <button type="button" role="tab" data-mode="mine">המינים שלי</button>
-        <button type="button" role="tab" data-mode="catalog">מאגר המינים בישראל</button>
+        <button type="button" role="tab" data-mode="catalog">המאגר הביולוגי של ישראל</button>
       </div>
       <label class="search">
         ${icon('search', 18)}
@@ -137,7 +137,7 @@ function renderCatalog(): void {
   if (!taxa.length) {
     qs(root, '#sp-count').textContent = '';
     list.innerHTML = `<div class="empty">${icon('leaf', 48, 1.4)}
-      <p>${isCatalogDownloading() ? 'מוריד את מאגר המינים...' : 'מאגר המינים עוד לא הורד למכשיר.'}</p>
+      <p>${isCatalogDownloading() ? 'מוריד את המאגר הביולוגי של ישראל...' : 'המאגר הביולוגי של ישראל עוד לא הורד למכשיר.'}</p>
       <p class="muted">רשימת המינים שנצפו בישראל, עם שמות בעברית, מ-iNaturalist. אחרי ההורדה היא עובדת גם בלי קליטה.</p>
       ${isCatalogDownloading() ? '' : `<button type="button" class="btn btn-primary" data-download>${icon('refresh', 18)} הורדת המאגר</button>`}</div>`;
     return;
@@ -159,7 +159,7 @@ function renderCatalog(): void {
         ${mine ? `<span class="seen-mark" title="ראית">${icon('check', 16, 2.4)}</span>` : ''}
       </button></li>`;
   }).join('')}</ul>
-  ${matches.length > MAX_ROWS ? `<p class="hint center">מוצגים ${MAX_ROWS} הנפוצים מתוך ${matches.length}. אפשר לחפש כדי למצוא מין מסוים.</p>` : ''}
+  ${matches.length > MAX_ROWS ? `<p class="hint center">מוצגים ${MAX_ROWS} הראשונים מתוך ${matches.length}. אפשר לחפש כדי למצוא מין מסוים.</p>` : ''}
   ${matches.length ? '' : `<div class="empty"><p>לא נמצאו מינים מתאימים.</p></div>`}
   <p class="hint center">מקור: iNaturalist — תצפיות מאומתות בישראל</p>`;
 }
@@ -180,5 +180,5 @@ async function download(): Promise<void> {
   render();
   await done;
   await activate();
-  toast(taxa.length ? 'מאגר המינים הורד' : 'ההורדה נכשלה — אפשר לנסות שוב', !taxa.length);
+  toast(taxa.length ? 'המאגר הביולוגי של ישראל הורד' : 'ההורדה נכשלה — אפשר לנסות שוב', !taxa.length);
 }

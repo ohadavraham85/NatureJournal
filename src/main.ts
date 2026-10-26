@@ -12,7 +12,7 @@ import { registerNav } from './lib/nav';
 import { refreshCatalogIfNeeded } from './lib/catalog';
 import { setupInstallPrompt } from './lib/install';
 import { initTheme } from './lib/theme';
-import { onStatus, resumeSync, type SyncStatus } from './sync/state';
+import { getMe, onMembers, onStatus, resumeSync, type SyncStatus } from './sync/state';
 
 initTheme();
 setupInstallPrompt();
@@ -25,6 +25,7 @@ import * as journalView from './views/journal';
 import * as detailView from './views/detail';
 import * as speciesView from './views/species';
 import * as settingsView from './views/settings';
+import * as mapView from './views/map';
 import { soonView } from './views/soon';
 
 const VIEWS: Record<string, View> = {
@@ -35,7 +36,7 @@ const VIEWS: Record<string, View> = {
   species: speciesView,
   settings: settingsView,
   gallery: soonView('grid', 'גלריה', 'כל התמונות שצילמת במקום אחד — מגיע בשלב הבא.'),
-  map: soonView('map', 'מפה', 'כל הדיווחים על מפה — מגיע בשלב הבא.'),
+  map: mapView,
 };
 
 /** Views reachable from the bottom tab bar. */
@@ -150,9 +151,26 @@ function formatClock(d: Date): string {
   return `${weekday} ${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} | ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** "בוקר טוב, אוהד" — by the time of day, with my name once it's set. */
+function greeting(d: Date, name: string): string {
+  const h = d.getHours();
+  const part = h >= 5 && h < 12 ? 'בוקר טוב' : h < 17 && h >= 12 ? 'צהריים טובים' : h >= 17 && h < 21 ? 'ערב טוב' : 'לילה טוב';
+  return name ? `${part}, ${name}` : part;
+}
+
 function setupClock(): void {
   const el = document.getElementById('topbar-datetime')!;
-  const tick = (): void => { el.textContent = formatClock(new Date()); };
+  const hello = document.getElementById('topbar-greeting')!;
+  let name = '';
+  const tick = (): void => {
+    const now = new Date();
+    el.textContent = formatClock(now);
+    hello.textContent = greeting(now, name);
+  };
+  const refreshName = (): void => { void getMe().then((m) => { name = m.name; tick(); }); };
+  refreshName();
+  onMembers(refreshName); // a rename in settings shows up here too
+  window.addEventListener('nj-me-changed', refreshName);
   tick();
   setInterval(tick, 15000);
 }

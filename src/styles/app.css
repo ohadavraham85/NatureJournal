@@ -68,7 +68,8 @@ h3 { font-size: 1rem; font-weight: 700; color: var(--olive-dark); }
 .topbar-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .topbar-title-text { display: flex; flex-direction: column; min-width: 0; }
 .topbar h1 { font-size: 1.1875rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topbar-sub { font-size: 0.75rem; color: var(--topbar-ink); display: flex; gap: 8px; align-items: center; }
+.topbar-sub { font-size: 0.75rem; color: var(--topbar-ink); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 2px; }
+.topbar-greeting { font-weight: var(--weight-medium); color: #fff; }
 .offline-pill { background: rgba(0,0,0,.22); border-radius: 999px; padding: 0 8px; font-size: 0.6875rem; }
 .topbar-actions { display: flex; gap: 8px; }
 .topbar-btn {
@@ -87,8 +88,6 @@ main {
   bottom: calc(var(--tabbar-h) + var(--safe-b));
   overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
-body[data-view="form"] main, body[data-view="detail"] main, body[data-view="settings"] main { bottom: 0; }
-body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view="settings"] .tabbar { display: none; }
 .view { max-width: 720px; margin: 0 auto; padding: 14px 16px 96px; display: flex; flex-direction: column; gap: 14px; }
 .view-flush { padding: 0 0 32px; }
 .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -107,7 +106,7 @@ body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view
 }
 .tab.active { background: var(--olive); color: #fff; font-weight: var(--weight-medium); padding: 6px 14px; }
 .fab {
-  position: fixed; z-index: 21; left: 18px;
+  position: fixed; z-index: 21; right: 18px;
   bottom: calc(var(--tabbar-h) + var(--safe-b) + 18px);
   width: 58px; height: 58px; border-radius: 50%; border: 0;
   background: var(--earth); color: #fff;
@@ -259,7 +258,7 @@ body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view
 .ww-main input { border: 0; background: transparent; font-size: 0.9375rem; font-weight: var(--weight-medium); padding: 4px 0; min-width: 0; width: 100%; }
 .ww-main input:focus { outline: 0; border-bottom: 1.5px solid var(--olive-line); }
 .ww-meta { font-size: 0.75rem; color: var(--ink-soft); }
-.form-actions { z-index: 5; display: flex; flex-direction: column; gap: 4px; position: sticky; bottom: 0; padding: 10px 0 calc(var(--safe-b) + 8px); background: var(--bg); }
+.form-actions { z-index: 5; display: flex; flex-direction: column; gap: 4px; position: sticky; bottom: 0; padding: 10px 0 8px; background: var(--bg); }
 
 /* ---------- detail ---------- */
 .detail { display: flex; flex-direction: column; }
@@ -599,3 +598,27 @@ body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view
 .entry-text strong { font-size: 1.0625rem; }
 .entry-sci { font-style: italic; color: var(--ink-soft); text-align: right; }
 .strip-tags .cat-tag { background: var(--cat); }
+
+/* ---------- map tab ---------- */
+.view.view-map { max-width: none; padding: 0; height: 100%; display: block; }
+.map-view { position: relative; height: 100%; }
+.map-canvas { position: absolute; inset: 0; }
+.map-overlay-top { position: absolute; z-index: 500; top: 8px; left: 0; right: 0; padding: 0 16px; pointer-events: none; }
+.map-overlay-top .filter-chips { pointer-events: auto; }
+.map-overlay-top .filter-chip { box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.map-side-btns { position: absolute; z-index: 500; top: 60px; right: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.map-side-btns .map-toggle { position: static; }
+.map-round-btn { width: 44px; height: 44px; border-radius: 12px; border: 0; background: var(--card); color: var(--ink); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.map-empty { position: absolute; z-index: 500; bottom: 90px; left: 16px; right: 16px; margin: 0; text-align: center; background: var(--card); border-radius: 12px; padding: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+.obs-pin { background: transparent; border: 0; }
+.obs-pin-body {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--cat); border: 2.5px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,.4); color: #fff;
+}
+.obs-pin-body svg { transform: rotate(45deg); }
+.pin-count { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 0.6875rem; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid #fff; }
+.map-popup { display: flex; flex-direction: column; gap: 4px; min-width: 170px; font-family: inherit; direction: rtl; text-align: right; }
+.map-popup strong { font-size: 0.9375rem; }
+.map-popup .btn { margin-top: 4px; }
+.leaflet-popup-content { margin: 10px 12px; }

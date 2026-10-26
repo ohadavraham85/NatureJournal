@@ -52,6 +52,8 @@ export interface Member {
   name: string;
   joinedAt: string;
   updatedAt: string;
+  /** Journal admin — may edit and delete everyone's observations. */
+  admin?: boolean;
 }
 
 export interface MediaRecord {
