@@ -7,6 +7,7 @@ import { catalogCounts, downloadCatalog, getCatalogMeta, isCatalogDownloading, t
 import { openWhatsNew } from '../lib/whats-new';
 import { icon } from '../lib/icons';
 import { toast } from '../lib/ui';
+import { installApp, isStandalone } from '../lib/install';
 
 let root: HTMLElement;
 
@@ -17,6 +18,7 @@ export function init(el: HTMLElement): void {
     if (t.closest('#s-whats-new')) openWhatsNew();
     else if (t.closest('#s-persist')) void requestPersist();
     else if (t.closest('#s-catalog')) void updateCatalog();
+    else if (t.closest('#s-install')) void installApp();
   });
 }
 
@@ -87,6 +89,7 @@ export async function activate(): Promise<void> {
       <dl class="kv">
         <div><dt>גרסה</dt><dd dir="ltr">${__APP_VERSION__ || 'פיתוח'}</dd></div>
       </dl>
+      ${isStandalone() ? '' : `<button type="button" class="btn btn-soft" id="s-install">${icon('leaf', 18)} התקנה בטלפון</button>`}
       <button type="button" class="btn btn-soft" id="s-whats-new">${icon('info', 18)} מה חדש</button>
     </section>`;
 }

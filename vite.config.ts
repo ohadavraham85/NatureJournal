@@ -24,6 +24,10 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: null, // registered manually in main.ts
       manifest: {
+        // Explicit app identity — without it Chrome derives one from the URL,
+        // and on the same github.io origin as the Birds journal it could take
+        // this app for one that's already installed.
+        id: 'nature-journal',
         name: 'יומן טבע',
         short_name: 'יומן טבע',
         description: 'דיווח תצפיות טבע — יונקים, פרפרים, פרחים, זוחלים, חרקים ופטריות. עובד גם בלי קליטה.',

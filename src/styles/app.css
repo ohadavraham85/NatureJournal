@@ -388,3 +388,13 @@ body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view
 .species-card-body p { margin: 0; font-size: 14px; }
 .species-card-links { display: flex; gap: 14px; font-size: 14px; }
 .species-card-links a { color: var(--olive); font-weight: 500; }
+
+/* ---------- install ---------- */
+.install-card {
+  border: 1.5px dashed var(--earth); border-radius: 16px; background: #F7EEE3; color: var(--ink);
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-align: start;
+}
+.install-card strong { display: block; font-size: 15px; color: #6A4420; }
+.install-card small { font-size: 12px; color: var(--ink-soft); }
+.install-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--earth); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.install-steps { margin: 4px 0 8px; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; }
