@@ -21,10 +21,11 @@ import { confirmDialog, showModal, toast } from '../lib/ui';
 import { navigate } from '../lib/nav';
 import type { ViewParams } from './view';
 import {
-  getMe, getMembers, getStatus, getSyncCode, inviteLink, loadEngine, newJournalCode, onMembers, onStatus,
+  getMe, getMembers, getStatus, isMe, getSyncCode, inviteLink, loadEngine, newJournalCode, onMembers, onStatus,
   parseJoinInput, setMe, setSyncCode, setStatus, type Me, type SyncStatus,
 } from '../sync/state';
 import type { Member } from '../types';
+import { canScanQr, qrSvg, scanQr } from '../lib/qr';
 
 interface Section { id: string; title: string; desc: string; icon: IconName }
 
@@ -229,6 +230,9 @@ async function renderShared(): Promise<void> {
           <input type="text" id="sh-code" dir="ltr" value="${escapeHtml(joinPrefill)}" placeholder="nj-…" aria-label="קוד או קישור">
           <button type="button" class="btn btn-soft" id="sh-join">הצטרפות</button>
         </div>
+        ${canScanQr()
+          ? `<button type="button" class="btn btn-soft" id="sh-scan">${icon('qr', 18)} סריקת קוד QR</button>`
+          : '<p class="hint">אפשר גם לסרוק את קוד ה-QR של היומן עם מצלמת הטלפון — הקישור ייפתח ישר כאן.</p>'}
         <p class="hint">כדי לסנכרן מכשיר נוסף שלך: מצטרפים מהמכשיר השני עם אותו קוד, ובוחרים בשם שלך.</p>
       </div>`;
     if (joinPrefill) card.scrollIntoView({ block: 'start' });
@@ -241,10 +245,11 @@ async function renderShared(): Promise<void> {
     <div class="members">
       <span class="field-label">המדווחים ביומן</span>
       ${(members.length ? members : [{ id: me.id, name: me.name || 'אני' } as Member]).map((m) => `
-        <span class="member-chip${m.id === me.id ? ' me' : ''}">${escapeHtml(m.name || 'ללא שם')}${m.id === me.id ? ' (אני)' : ''}</span>`).join('')}
+        <span class="member-chip${isMe(m.id, me) ? ' me' : ''}">${escapeHtml(m.name || 'ללא שם')}${isMe(m.id, me) ? ' (אני)' : ''}</span>`).join('')}
     </div>
     <div class="btn-row">
       <button type="button" class="btn btn-primary" id="sh-invite">${icon('share', 18)} הזמנת מדווחים</button>
+      <button type="button" class="btn btn-soft" id="sh-qr">${icon('qr', 18)} קוד QR</button>
     </div>
     <label class="field"><span class="field-label">השם שלך</span>
       <span class="join-row"><input type="text" id="sh-rename" value="${escapeHtml(me.name)}"><button type="button" class="btn btn-soft" id="sh-rename-save">שמירה</button></span></label>
@@ -253,6 +258,10 @@ async function renderShared(): Promise<void> {
 }
 
 async function startShared(code: string, me: Me): Promise<void> {
+  // Joining as an existing member swaps this device's id — keep the old one
+  // as an alias so reports saved here before joining stay mine.
+  const prev = await getMe();
+  if (prev.id !== me.id) me = { ...me, aliases: [...new Set([...(prev.aliases ?? []), ...(me.aliases ?? []), prev.id])] };
   await setMe(me);
   await setSyncCode(code);
   joinPrefill = '';
@@ -335,11 +344,36 @@ async function invite(): Promise<void> {
   }
 }
 
+/** Shows the invite link as a QR code — scan it from the other device. */
+async function showQr(): Promise<void> {
+  const link = inviteLink(await getSyncCode());
+  const box = document.createElement('div');
+  box.className = 'qr-dialog';
+  box.innerHTML = `
+    <h3>${icon('qr')} סריקה להצטרפות</h3>
+    <div class="qr-code">${qrSvg(link)}</div>
+    <p class="hint">סורקים במכשיר השני עם מצלמת הטלפון, או ביומן טבע: הגדרות ← סנכרון וגיבוי ← "סריקת קוד QR". במכשיר שלך בוחרים בשם שלך.</p>
+    <div class="modal-actions"><button type="button" class="btn btn-primary" data-close>סגירה</button></div>`;
+  const close = showModal(box);
+  box.querySelector('[data-close]')!.addEventListener('click', close);
+}
+
+async function scanToJoin(): Promise<void> {
+  const text = await scanQr();
+  if (!text) return;
+  const code = parseJoinInput(text);
+  if (!code) { toast('זה לא קוד של יומן טבע', true); return; }
+  const input = root.querySelector<HTMLInputElement>('#sh-code');
+  if (input) input.value = code;
+  await joinShared();
+}
+
 async function renameMe(): Promise<void> {
   const name = root.querySelector<HTMLInputElement>('#sh-rename')?.value.trim() ?? '';
   if (!name) return;
   const me = { ...(await getMe()), name };
   await setMe(me);
+  void (await loadEngine()).start(await getSyncCode(), me);
   await (await loadEngine()).updateMyName(me);
   (document.activeElement as HTMLElement | null)?.blur();
   toast('השם עודכן');
@@ -516,6 +550,8 @@ async function onClick(e: Event): Promise<void> {
     case 'sh-create': await createShared(); break;
     case 'sh-join': await joinShared(); break;
     case 'sh-invite': await invite(); break;
+    case 'sh-qr': await showQr(); break;
+    case 'sh-scan': await scanToJoin(); break;
     case 'sh-rename-save': await renameMe(); break;
     case 'sh-leave': await leaveShared(); break;
     case 's-catalog': await updateCatalog(); break;

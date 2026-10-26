@@ -51,16 +51,23 @@ export async function start(journalCode: string, who: Me): Promise<void> {
   // First connection of this device to this journal: my existing reports
   // get my name on them and all of them go up.
   const seededKey = `syncSeeded_${code}`;
-  if (!(await getSetting<boolean>(seededKey, false))) {
-    const all = await listObservationsRaw();
-    for (const o of all) {
-      const mine = !o.reporterId || o.reporterId === who.id;
-      if (mine && o.reporterName !== who.name) {
-        await putObservationRaw({ ...o, reporterId: who.id, reporterName: who.name, updatedAt: new Date().toISOString() });
-      }
+  const firstTime = !(await getSetting<boolean>(seededKey, false));
+  // My reports — including ones saved on this device before it joined as an
+  // existing member (they still carry the device's former id) — get my
+  // current id and name, and go up again.
+  const claimed: string[] = [];
+  for (const o of await listObservationsRaw()) {
+    const mine = !o.reporterId || o.reporterId === who.id || who.aliases?.includes(o.reporterId);
+    if (mine && (o.reporterId !== who.id || o.reporterName !== who.name)) {
+      await putObservationRaw({ ...o, reporterId: who.id, reporterName: who.name, updatedAt: new Date().toISOString() });
+      claimed.push(o.id);
     }
-    await queueForSync(all.map((o) => o.id));
+  }
+  if (firstTime) {
+    await queueForSync((await listObservationsRaw()).map((o) => o.id));
     await setSetting(seededKey, true);
+  } else {
+    await queueForSync(claimed);
   }
 
   // Wait (briefly) for my member entry to reach the server, so someone
@@ -162,10 +169,12 @@ async function pushOne(id: string): Promise<void> {
     const p = await uploadPhoto(pid);
     if (p) photos.push(p);
   }
-  // Not awaited: with the offline cache the write is durable as soon as it's
-  // queued, and the promise only settles once the server confirms.
-  void setDoc(doc(obsCol(), id), clean({ ...o, photos }))
-    .catch((err: Error) => { setStatus({ state: 'error', message: err.message }); void queueForSync([id]); });
+  // The report leaves the outbox only once the server has confirmed it — if
+  // the app closes first, the next run simply sends it again (same doc id).
+  await Promise.race([
+    setDoc(doc(obsCol(), id), clean({ ...o, photos })),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('השרת לא אישר את השמירה — ננסה שוב')), 20000)),
+  ]);
 }
 
 async function mergeRemote(remote: RemoteObservation): Promise<void> {
