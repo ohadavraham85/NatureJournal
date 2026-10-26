@@ -19,6 +19,7 @@ import { confirmDialog, fmtCoords, fromLocalInputValue, toast, toLocalInputValue
 import { goBack, navigate } from '../lib/nav';
 import type { DateSource, LocationSource, Observation, Taxon } from '../types';
 import type { ViewParams } from './view';
+import { getMe } from '../sync/state';
 
 let root: HTMLElement;
 let editId: string | undefined;
@@ -461,6 +462,11 @@ async function save(): Promise<void> {
   if (!draft.taxonId && draft.species.trim()) {
     const t = await findTaxonByName(draft.category, draft.species);
     if (t) { draft.taxonId = t.id; draft.sci = t.sci; }
+  }
+  if (!editId) {
+    const me = await getMe();
+    draft.reporterId = me.id;
+    if (me.name) draft.reporterName = me.name;
   }
   saving = true;
   const btn = qs<HTMLButtonElement>(root, '#f-save');

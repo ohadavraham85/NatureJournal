@@ -70,7 +70,7 @@ export async function activate(): Promise<void> {
     <section>
       <div class="title-row"><h3>דיווחים אחרונים</h3>${all.length > 5 ? '<button type="button" class="link-btn" data-all>לכל היומן</button>' : ''}</div>
       ${all.length
-        ? `<div class="obs-strips">${all.slice(0, 5).map(obsStripHtml).join('')}</div>`
+        ? `<div class="obs-strips">${all.slice(0, 5).map((o) => obsStripHtml(o)).join('')}</div>`
         : `<div class="empty">${icon('leaf', 48, 1.4)}<p>עוד אין דיווחים — זה הזמן לצאת לטבע.</p></div>`}
     </section>`;
   hydrateThumbs(root);

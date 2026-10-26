@@ -11,8 +11,9 @@ export async function thumbUrl(id: string): Promise<string | null> {
   if (cached) return cached;
   const m = await getMedia(id);
   if (!m) return null;
-  const url = URL.createObjectURL(m.thumb);
-  thumbs.set(id, url);
+  // A photo synced from another device lives in the cloud (cached by the service worker).
+  const url = m.thumb ? URL.createObjectURL(m.thumb) : m.remoteThumb ?? m.remoteFull ?? null;
+  if (url) thumbs.set(id, url);
   return url;
 }
 
@@ -21,8 +22,8 @@ export async function photoUrl(id: string): Promise<string | null> {
   if (cached) return cached;
   const m = await getMedia(id);
   if (!m) return null;
-  const url = URL.createObjectURL(m.blob);
-  fulls.set(id, url);
+  const url = m.blob ? URL.createObjectURL(m.blob) : m.remoteFull ?? null;
+  if (url) fulls.set(id, url);
   return url;
 }
 

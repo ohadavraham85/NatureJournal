@@ -20,29 +20,41 @@ import { escapeHtml } from '../lib/escape';
 import { confirmDialog, showModal, toast } from '../lib/ui';
 import { navigate } from '../lib/nav';
 import type { ViewParams } from './view';
+import {
+  getMe, getMembers, getStatus, getSyncCode, inviteLink, loadEngine, newJournalCode, onMembers, onStatus,
+  parseJoinInput, setMe, setSyncCode, setStatus, type Me, type SyncStatus,
+} from '../sync/state';
+import type { Member } from '../types';
 
 interface Section { id: string; title: string; desc: string; icon: IconName }
 
 const SECTIONS: Section[] = [
   { id: 'design', title: 'עיצוב', desc: 'צבעים, גופן וגודל הטקסט', icon: 'palette' },
   { id: 'export', title: 'ייצוא', desc: 'טבלת הדיווחים לאקסל', icon: 'table' },
-  { id: 'backup', title: 'גיבוי וסנכרון', desc: 'קובץ גיבוי, שחזור וסנכרון בין מכשירים', icon: 'cloud' },
+  { id: 'backup', title: 'סנכרון וגיבוי', desc: 'יומן משותף בין מכשירים ומדווחים, גיבוי ושחזור', icon: 'cloud' },
   { id: 'catalog', title: 'מאגר המינים', desc: 'רשימת המינים של ישראל מ-iNaturalist', icon: 'database' },
   { id: 'misc', title: 'כללי', desc: 'התקנה, אחסון במכשיר, מה חדש וגרסה', icon: 'sliders' },
 ];
 
 let root: HTMLElement;
 let section = '';
+/** Journal code from an invite link, waiting for the user to confirm joining. */
+let joinPrefill = '';
 
 export function init(el: HTMLElement): void {
   root = el;
   root.addEventListener('click', (e) => void onClick(e));
   root.addEventListener('input', onInput);
   root.addEventListener('change', (e) => void onChange(e));
+  // Keep the shared-journal card live while it's on screen.
+  const refresh = (): void => { if (!root.hidden && section === 'backup') void renderShared(); };
+  onStatus(refresh);
+  onMembers(refresh);
 }
 
 export function setParams(params: ViewParams): void {
   section = params.section ?? '';
+  if (params.join) joinPrefill = params.join;
 }
 
 export async function activate(): Promise<void> {
@@ -51,7 +63,7 @@ export async function activate(): Promise<void> {
   if (!s) renderMenu();
   else if (s.id === 'design') renderDesign();
   else if (s.id === 'export') renderExport();
-  else if (s.id === 'backup') renderBackup();
+  else if (s.id === 'backup') { renderBackup(); await renderShared(); }
   else if (s.id === 'catalog') await renderCatalog();
   else await renderMisc();
 }
@@ -164,6 +176,7 @@ function renderExport(): void {
 function renderBackup(): void {
   const last = lastBackupTime();
   root.innerHTML = `
+    <section class="card-section" id="shared-card"></section>
     <section class="card-section">
       <h3>גיבוי לקובץ</h3>
       <p class="hint">קובץ אחד עם כל הדיווחים והתמונות. שומרים אותו במכשיר או שולחים ל-Drive, למייל או לוואטסאפ, ואפשר לשחזר ממנו בכל מכשיר.</p>
@@ -179,10 +192,166 @@ function renderBackup(): void {
       <button type="button" class="btn btn-soft" id="b-restore">${icon('upload', 18)} בחירת קובץ גיבוי</button>
       <input type="file" id="b-file" accept=".json,application/json" hidden>
     </section>
-    <section class="card-section">
-      <h3>סנכרון בין המכשירים</h3>
-      <p class="hint">סנכרון אוטומטי בין הטלפון למכשירים האחרים שלך (כמו ביומן הצפרות) יגיע בשלב הבא. עד אז אפשר להעביר דיווחים עם קובץ גיבוי ושחזור.</p>
-    </section>`;
+`;
+}
+
+/* ---------- יומן משותף (sync + other reporters) ---------- */
+
+function statusText(s: SyncStatus): string {
+  const pending = s.pending ? ` · ${s.pending} ממתינים להעלאה` : '';
+  switch (s.state) {
+    case 'synced': return `${icon('check', 16, 2.4)} מסונכרן`;
+    case 'connecting': return `${icon('refresh', 16)} מסנכרן...${pending}`;
+    case 'offline': return `${icon('wifiOff', 16)} אין קליטה — הכול נשמר ויעלה כשתחזור${pending}`;
+    case 'error': return `${icon('info', 16)} שגיאת סנכרון${s.message ? `: ${escapeHtml(s.message)}` : ''}${pending}`;
+    default: return '';
+  }
+}
+
+async function renderShared(): Promise<void> {
+  const card = root.querySelector<HTMLElement>('#shared-card');
+  if (!card) return;
+  // Don't wipe a field the user is typing in.
+  if (card.contains(document.activeElement) && (document.activeElement as HTMLElement).tagName === 'INPUT') return;
+  const [code, me] = await Promise.all([getSyncCode(), getMe()]);
+  if (!code) {
+    card.innerHTML = `
+      <h3>יומן משותף</h3>
+      <p class="hint">מסנכרן את הדיווחים בין הטלפון למכשירים האחרים שלך, ומאפשר לצרף מדווחים נוספים — כל אחד מדווח מהטלפון שלו, וכולם רואים את כל הדיווחים. כל דיווח מסומן בשם מי שדיווח.</p>
+      <label class="field"><span class="field-label">השם שלך (יופיע על הדיווחים)</span>
+        <input type="text" id="sh-name" value="${escapeHtml(me.name)}" placeholder="למשל: אוהד"></label>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="sh-create">${icon('plus', 18)} יצירת יומן משותף</button>
+      </div>
+      <div class="join-box">
+        <span class="field-label">יש לך קוד או קישור הזמנה?</span>
+        <div class="join-row">
+          <input type="text" id="sh-code" dir="ltr" value="${escapeHtml(joinPrefill)}" placeholder="nj-…" aria-label="קוד או קישור">
+          <button type="button" class="btn btn-soft" id="sh-join">הצטרפות</button>
+        </div>
+        <p class="hint">כדי לסנכרן מכשיר נוסף שלך: מצטרפים מהמכשיר השני עם אותו קוד, ובוחרים בשם שלך.</p>
+      </div>`;
+    if (joinPrefill) card.scrollIntoView({ block: 'start' });
+    return;
+  }
+  const members = getMembers();
+  card.innerHTML = `
+    <h3>יומן משותף</h3>
+    <p class="sync-line sync-${getStatus().state}">${statusText(getStatus())}</p>
+    <div class="members">
+      <span class="field-label">המדווחים ביומן</span>
+      ${(members.length ? members : [{ id: me.id, name: me.name || 'אני' } as Member]).map((m) => `
+        <span class="member-chip${m.id === me.id ? ' me' : ''}">${escapeHtml(m.name || 'ללא שם')}${m.id === me.id ? ' (אני)' : ''}</span>`).join('')}
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-primary" id="sh-invite">${icon('share', 18)} הזמנת מדווחים</button>
+    </div>
+    <label class="field"><span class="field-label">השם שלך</span>
+      <span class="join-row"><input type="text" id="sh-rename" value="${escapeHtml(me.name)}"><button type="button" class="btn btn-soft" id="sh-rename-save">שמירה</button></span></label>
+    <p class="hint">קוד היומן: <span dir="ltr" class="code">${escapeHtml(code)}</span><br>כל מי שיש לו את הקוד או את קישור ההזמנה יכול לראות ולהוסיף דיווחים — משתפים רק עם מי שרוצים.</p>
+    <button type="button" class="btn btn-ghost-dark" id="sh-leave">ניתוק המכשיר מהיומן המשותף</button>`;
+}
+
+async function startShared(code: string, me: Me): Promise<void> {
+  await setMe(me);
+  await setSyncCode(code);
+  joinPrefill = '';
+  setStatus({ state: 'connecting' });
+  const engine = await loadEngine();
+  await engine.start(code, me);
+}
+
+async function createShared(): Promise<void> {
+  const name = root.querySelector<HTMLInputElement>('#sh-name')?.value.trim() ?? '';
+  if (!name) { toast('כדאי לכתוב קודם את השם שלך', true); root.querySelector<HTMLInputElement>('#sh-name')?.focus(); return; }
+  if (!navigator.onLine) { toast('צריך קליטה כדי ליצור יומן משותף', true); return; }
+  await startShared(newJournalCode(), { ...(await getMe()), name });
+  toast('היומן המשותף נוצר — אפשר להזמין מדווחים');
+  await renderShared();
+}
+
+async function joinShared(): Promise<void> {
+  const raw = root.querySelector<HTMLInputElement>('#sh-code')?.value ?? '';
+  const code = parseJoinInput(raw);
+  if (!code) { toast('הקוד לא תקין — הוא מתחיל ב-nj-', true); return; }
+  if (!navigator.onLine) { toast('צריך קליטה כדי להצטרף', true); return; }
+  const typedName = root.querySelector<HTMLInputElement>('#sh-name')?.value.trim() ?? '';
+  let members: Member[];
+  try {
+    members = await (await loadEngine()).fetchMembers(code);
+  } catch (err) {
+    toast('לא הצלחתי להתחבר ליומן: ' + (err as Error).message, true, 5000);
+    return;
+  }
+  const me = await getMe();
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <h3>${icon('cloud')} הצטרפות ליומן משותף</h3>
+    ${members.length ? `
+      <p>מי את/ה ביומן הזה?</p>
+      <div class="option-strips">
+        ${members.map((m) => `<button type="button" class="option-strip" data-member="${m.id}">${escapeHtml(m.name || 'ללא שם')} <small class="hint">— זה אני, במכשיר אחר</small></button>`).join('')}
+      </div>
+      <p class="hint">או מדווח/ת חדש/ה:</p>` : '<p class="hint">ביומן הזה עוד אין מדווחים. אם קיבלת את הקוד ממישהו, כדאי לוודא שהוא הועתק נכון.</p>'}
+    <div class="join-row">
+      <input type="text" data-new-name value="${escapeHtml(typedName || me.name)}" placeholder="השם שלך">
+      <button type="button" class="btn btn-primary" data-new>הצטרפות</button>
+    </div>
+    <div class="modal-actions"><button type="button" class="btn" data-cancel>ביטול</button></div>`;
+  const close = showModal(box);
+  box.querySelector('[data-cancel]')!.addEventListener('click', close);
+  box.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const memberBtn = t.closest<HTMLElement>('[data-member]');
+    const join = async (who: Me): Promise<void> => {
+      close();
+      await startShared(code, who);
+      toast('הצטרפת ליומן המשותף');
+      await renderShared();
+    };
+    if (memberBtn) {
+      const m = members.find((x) => x.id === memberBtn.dataset.member)!;
+      void join({ id: m.id, name: m.name });
+    } else if (t.closest('[data-new]')) {
+      const name = box.querySelector<HTMLInputElement>('[data-new-name]')!.value.trim();
+      if (!name) { toast('כדאי לכתוב את השם שלך', true); return; }
+      void join({ id: me.id, name });
+    }
+  });
+}
+
+async function invite(): Promise<void> {
+  const code = await getSyncCode();
+  const link = inviteLink(code);
+  const text = `מזמין אותך לדווח איתי ביומן טבע — פותחים את הקישור ומצטרפים:\n${link}`;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'הזמנה ליומן טבע', text }); return; }
+  } catch { return; /* cancelled */ }
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('קישור ההזמנה הועתק — אפשר להדביק בוואטסאפ');
+  } catch {
+    toast(`קישור ההזמנה: ${link}`, false, 8000);
+  }
+}
+
+async function renameMe(): Promise<void> {
+  const name = root.querySelector<HTMLInputElement>('#sh-rename')?.value.trim() ?? '';
+  if (!name) return;
+  const me = { ...(await getMe()), name };
+  await setMe(me);
+  await (await loadEngine()).updateMyName(me);
+  (document.activeElement as HTMLElement | null)?.blur();
+  toast('השם עודכן');
+  await renderShared();
+}
+
+async function leaveShared(): Promise<void> {
+  if (!(await confirmDialog('לנתק את המכשיר מהיומן המשותף? הדיווחים שכבר במכשיר יישארו בו, אבל לא יסונכרנו יותר.', 'ניתוק'))) return;
+  (await loadEngine()).stop();
+  await setSyncCode('');
+  toast('המכשיר נותק מהיומן המשותף');
+  await renderShared();
 }
 
 async function withBusy(btn: HTMLButtonElement, label: string, fn: () => Promise<void>): Promise<void> {
@@ -267,7 +436,7 @@ function fmtBytes(n: number): string {
 }
 
 async function renderMisc(): Promise<void> {
-  const [obsCount, photoCount] = await Promise.all([db.observations.count(), db.media.count()]);
+  const [obsCount, photoCount] = await Promise.all([db.observations.filter((o) => !o.deleted).count(), db.media.count()]);
   const est = await navigator.storage?.estimate?.().catch(() => undefined);
   const persisted = await navigator.storage?.persisted?.().catch(() => false);
   root.innerHTML = `
@@ -344,6 +513,11 @@ async function onClick(e: Event): Promise<void> {
     case 'b-restore':
       root.querySelector<HTMLInputElement>('#b-file')!.click();
       break;
+    case 'sh-create': await createShared(); break;
+    case 'sh-join': await joinShared(); break;
+    case 'sh-invite': await invite(); break;
+    case 'sh-rename-save': await renameMe(); break;
+    case 'sh-leave': await leaveShared(); break;
     case 's-catalog': await updateCatalog(); break;
     case 's-install': await installApp(); break;
     case 's-persist': await requestPersist(); break;

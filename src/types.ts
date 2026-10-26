@@ -32,16 +32,33 @@ export interface Observation {
   photoIds: string[];
   createdAt: string;
   updatedAt: string;
+  /** Who reported it, in a shared journal (see sync/). Absent = this device's owner. */
+  reporterId?: string;
+  reporterName?: string;
+  /** Tombstone: deleted reports stay as a marker so the deletion syncs to other devices. */
+  deleted?: boolean;
+}
+
+/** Someone reporting into a shared journal. */
+export interface Member {
+  id: string;
+  name: string;
+  joinedAt: string;
+  updatedAt: string;
 }
 
 export interface MediaRecord {
   id: string;
   /** '' while the photo is attached to a report that hasn't been saved yet. */
   obsId: string;
-  /** Downscaled photo (long side ≤ PHOTO_MAX_PX) kept for full-screen viewing. */
-  blob: Blob;
-  /** Small square-ish preview for grids. */
-  thumb: Blob;
+  /** Downscaled photo (long side ≤ PHOTO_MAX_PX) kept for full-screen viewing.
+   * Absent for photos synced from another device (shown from `remoteFull`). */
+  blob?: Blob;
+  /** Small preview for grids. */
+  thumb?: Blob;
+  /** Cloud copies (Firebase Storage download URLs), once uploaded or synced. */
+  remoteFull?: string;
+  remoteThumb?: string;
   name: string;
   width: number;
   height: number;

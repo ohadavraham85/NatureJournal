@@ -12,9 +12,14 @@ import { qs } from '../lib/dom';
 import { navigate } from '../lib/nav';
 import type { Observation } from '../types';
 import type { ViewParams } from './view';
+import { getMe, getMembers, onMembers, reporterName } from '../sync/state';
+import { escapeHtml } from '../lib/escape';
 
 let root: HTMLElement;
 let filterCat = '';
+/** '' = everyone; otherwise a reporter id. */
+let filterReporter = '';
+let meId = '';
 let search = '';
 let all: Observation[] = [];
 const LAYOUT_KEY = 'journalLayout';
@@ -40,6 +45,7 @@ export function init(el: HTMLElement): void {
         ${icon('search', 18)}
         <input type="search" id="j-search" aria-label="חיפוש" placeholder="חיפוש (שם, מקום, הערות)...">
       </label>
+      <div class="filter-chips" id="j-reporters" role="group" aria-label="סינון לפי מדווח" hidden></div>
       <div class="filter-chips" id="j-chips" role="group" aria-label="סינון לפי קטגוריה">
         <button type="button" class="filter-chip" data-cat="" aria-pressed="true">הכל</button>
         ${CATEGORIES.map((c) => `<button type="button" class="filter-chip" data-cat="${c.id}" aria-pressed="false" style="--cat:${c.color}">${c.label}</button>`).join('')}
@@ -69,6 +75,14 @@ export function init(el: HTMLElement): void {
     render();
   });
 
+  qs(root, '#j-reporters').addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-reporter]');
+    if (!chip) return;
+    filterReporter = chip.dataset.reporter!;
+    render();
+  });
+  onMembers(() => { if (!root.hidden) render(); });
+
   qs(root, '#j-grid').addEventListener('click', (e) => {
     const card = (e.target as HTMLElement).closest<HTMLElement>('.obs-card, .obs-strip');
     if (card) navigate('detail', { viewId: card.dataset.id! });
@@ -85,7 +99,7 @@ export function setParams(params: ViewParams): void {
 
 export async function activate(): Promise<void> {
   qs<HTMLInputElement>(root, '#j-search').value = search;
-  all = await listObservations();
+  [all, meId] = await Promise.all([listObservations(), getMe().then((m) => m.id)]);
   render();
 }
 
@@ -116,14 +130,26 @@ function render(): void {
   });
   root.querySelectorAll<HTMLElement>('[data-layout]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
   const q = search.trim();
-  const shown = all.filter((o) => (!filterCat || o.category === filterCat) && matches(o, q));
+  // Reporter chips appear once more than one person reports into this journal.
+  const reporters = new Map<string, string>();
+  for (const m of getMembers()) reporters.set(m.id, m.name);
+  for (const o of all) if (o.reporterId && !reporters.has(o.reporterId)) reporters.set(o.reporterId, reporterName(o));
+  const multi = reporters.size > 1;
+  const repBox = qs(root, '#j-reporters');
+  repBox.hidden = !multi;
+  if (multi) {
+    repBox.innerHTML = [['', 'כל המדווחים'], [meId, 'אני'], ...[...reporters].filter(([id]) => id !== meId)]
+      .map(([id, name]) => `<button type="button" class="filter-chip reporter-chip" data-reporter="${escapeHtml(id!)}" aria-pressed="${id === filterReporter}">${escapeHtml(name || 'ללא שם')}</button>`).join('');
+  } else filterReporter = '';
+  const byReporter = (o: Observation): boolean => !filterReporter || (o.reporterId ?? meId) === filterReporter;
+  const shown = all.filter((o) => byReporter(o) && (!filterCat || o.category === filterCat) && matches(o, q));
   qs(root, '#j-count').textContent = shown.length === all.length
     ? `${all.length} דיווחים`
     : `${shown.length} מתוך ${all.length}`;
 
   const grid = qs(root, '#j-grid');
   grid.className = layout === 'grid' ? 'obs-grid' : 'obs-strips';
-  grid.innerHTML = shown.map(layout === 'grid' ? obsCardHtml : obsStripHtml).join('');
+  grid.innerHTML = shown.map((o) => (layout === 'grid' ? obsCardHtml : obsStripHtml)(o, multi && !!o.reporterId && o.reporterId !== meId)).join('');
   hydrateThumbs(grid);
 
   const empty = qs(root, '#j-empty');

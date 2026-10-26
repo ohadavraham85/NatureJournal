@@ -6,6 +6,17 @@ import type { Observation, MediaRecord } from '../types';
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
+/** Local edits only (not remote merges) — the sync engine pushes these. */
+const localListeners = new Set<(obsId: string) => void>();
+
+export function onLocalChange(fn: (obsId: string) => void): () => void {
+  localListeners.add(fn);
+  return () => localListeners.delete(fn);
+}
+
+function emitLocal(obsId: string): void {
+  for (const fn of localListeners) fn(obsId);
+}
 
 export function onDataChanged(fn: Listener): () => void {
   listeners.add(fn);
@@ -27,13 +38,30 @@ export function newId(): string {
 
 /* ---------- observations ---------- */
 
-/** Newest sighting first. */
+/** Newest sighting first (deleted reports left out). */
 export async function listObservations(): Promise<Observation[]> {
-  return (await db.observations.toArray()).sort((a, b) => (a.dateTime < b.dateTime ? 1 : a.dateTime > b.dateTime ? -1 : 0));
+  return (await db.observations.filter((o) => !o.deleted).toArray()).sort((a, b) => (a.dateTime < b.dateTime ? 1 : a.dateTime > b.dateTime ? -1 : 0));
 }
 
-export function getObservation(id: string): Promise<Observation | undefined> {
+export async function getObservation(id: string): Promise<Observation | undefined> {
+  const o = await db.observations.get(id);
+  return o?.deleted ? undefined : o;
+}
+
+/** Including deleted ones — for sync. */
+export function getObservationRaw(id: string): Promise<Observation | undefined> {
   return db.observations.get(id);
+}
+
+export function listObservationsRaw(): Promise<Observation[]> {
+  return db.observations.toArray();
+}
+
+/** Stores a report exactly as given (no timestamp bump, no push) — used
+ * for remote merges and restores. */
+export async function putObservationRaw(obs: Observation): Promise<void> {
+  await db.observations.put(obs);
+  emit();
 }
 
 /** Saves the report and claims its photos (setting their obsId), dropping
@@ -47,21 +75,26 @@ export async function saveObservation(obs: Observation): Promise<void> {
     await db.observations.put({ ...obs, updatedAt: new Date().toISOString() });
   });
   emit();
+  emitLocal(obs.id);
 }
 
+/** Leaves a tombstone (so a shared journal learns of the deletion) and
+ * drops the photos right away. */
 export async function deleteObservation(id: string): Promise<void> {
   await db.transaction('rw', db.observations, db.media, async () => {
+    const o = await db.observations.get(id);
     await db.media.where('obsId').equals(id).delete();
-    await db.observations.delete(id);
+    if (o) await db.observations.put({ ...o, deleted: true, photoIds: [], updatedAt: new Date().toISOString() });
   });
   emit();
+  emitLocal(id);
 }
 
 /** Distinct species names used so far, most frequently reported first —
  * feeds the species autocomplete. Optionally narrowed to one category. */
 export async function speciesSuggestions(categoryId?: string): Promise<string[]> {
   const counts = new Map<string, number>();
-  for (const o of await db.observations.toArray()) {
+  for (const o of await listObservations()) {
     if (categoryId && o.category !== categoryId) continue;
     const name = o.species.trim();
     if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
@@ -87,6 +120,25 @@ export async function addMedia(rec: MediaRecord): Promise<void> {
 
 export function getMedia(id: string): Promise<MediaRecord | undefined> {
   return db.media.get(id);
+}
+
+export async function putMedia(rec: MediaRecord): Promise<void> {
+  await db.media.put(rec);
+}
+
+export function mediaForObservation(obsId: string): Promise<MediaRecord[]> {
+  return db.media.where('obsId').equals(obsId).toArray();
+}
+
+/* ---------- settings ---------- */
+
+export async function getSetting<T>(key: string, fallback: T): Promise<T> {
+  const row = await db.settings.get(key);
+  return row ? (row.value as T) : fallback;
+}
+
+export async function setSetting(key: string, value: unknown): Promise<void> {
+  await db.settings.put({ key, value });
 }
 
 /** Photos attached in a form that was then abandoned never get an obsId —

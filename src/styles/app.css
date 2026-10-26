@@ -496,3 +496,30 @@ body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view
 .color-row + .color-row { border-top: 1px solid var(--line); }
 .color-pick { display: flex; align-items: center; gap: 8px; }
 .color-pick input[type="color"] { width: 52px; height: 40px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 2px; background: var(--card); }
+
+/* ---------- shared journal / sync ---------- */
+.sync-pill {
+  border: 0; border-radius: 999px; padding: 0 8px; font-size: 0.6875rem; min-height: 20px;
+  background: rgba(0,0,0,.22); color: var(--topbar-ink); display: inline-flex; align-items: center; gap: 4px;
+}
+.sync-pill .icon { width: 12px; height: 12px; }
+.sync-pill.sync-error { background: var(--danger); color: #fff; }
+.field-label { font-size: 0.875rem; font-weight: 700; color: var(--olive-dark); }
+.card-section .field input[type="text"] { min-height: 46px; }
+.join-box { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.join-row { display: flex; gap: 8px; align-items: center; }
+.join-row input {
+  flex: 1; min-width: 0; min-height: 46px; border: 1.5px solid var(--line-strong); border-radius: 12px;
+  padding: 8px 12px; background: var(--card); font-size: 1rem;
+}
+.join-row .btn { flex-shrink: 0; }
+.sync-line { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 0.875rem; flex-wrap: wrap; }
+.sync-line.sync-synced { color: var(--olive); }
+.sync-line.sync-error { color: var(--danger); }
+.members { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.members .field-label { flex-basis: 100%; }
+.member-chip { border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 12px; font-size: 0.875rem; background: var(--bg); }
+.member-chip.me { border-color: var(--olive); background: var(--olive-soft); }
+.code { font-family: ui-monospace, monospace; user-select: all; background: var(--sunken); border-radius: 6px; padding: 0 6px; }
+.reporter-chip { --cat: var(--earth); }
+.option-strip small.hint { margin: 0 6px; }

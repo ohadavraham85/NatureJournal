@@ -45,6 +45,19 @@ registerRoute(
   }),
 );
 
+// Photos synced from other reporters' devices (Firebase Storage) — kept for offline viewing.
+registerRoute(
+  // Only the image bytes (?alt=media) — not the SDK's metadata/upload calls.
+  ({ url }) => url.hostname === 'firebasestorage.googleapis.com' && url.pathname.includes('nature-media') && url.searchParams.get('alt') === 'media',
+  new CacheFirst({
+    cacheName: 'synced-photos',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 3000, maxAgeSeconds: 365 * 24 * 60 * 60 }),
+    ],
+  }),
+);
+
 // OpenStreetMap tiles — cache-first with a bounded, expiring cache.
 registerRoute(
   ({ url }) => url.hostname.endsWith('tile.openstreetmap.org'),
