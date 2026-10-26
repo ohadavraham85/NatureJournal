@@ -2,6 +2,7 @@
 
 import Dexie, { type EntityTable } from 'dexie';
 import type { Observation, MediaRecord, SettingRow, Taxon } from '../types';
+import { normalizeObservation } from '../lib/observation';
 
 export class NatureDatabase extends Dexie {
   observations!: EntityTable<Observation, 'id'>;
@@ -22,6 +23,16 @@ export class NatureDatabase extends Dexie {
       media: 'id, obsId',
       settings: 'key',
       taxa: 'id, category',
+    });
+    // v3: several species per observation — {category, species, …} → entries[].
+    this.version(3).stores({
+      observations: 'id, dateTime, updatedAt',
+      media: 'id, obsId',
+      settings: 'key',
+      taxa: 'id, category',
+    }).upgrade(async (tx) => {
+      const table = tx.table('observations');
+      for (const o of await table.toArray()) await table.put(normalizeObservation(o));
     });
   }
 }

@@ -113,7 +113,7 @@ function suggestionGroups(): Array<{ title: string; items: ComboItem[]; limit: n
     return [...m.entries()].map(([v, n]) => ({ value: v, label: v, sub: `${n} דיווחים`, weight: n }));
   };
   return [
-    { title: 'מינים', items: count(all.map((o) => o.species)), limit: 6 },
+    { title: 'מינים', items: count(all.flatMap((o) => o.entries.map((e) => e.species))), limit: 6 },
     { title: 'מקומות', items: count(all.map((o) => o.place)), limit: 4 },
   ];
 }
@@ -122,7 +122,7 @@ function matches(o: Observation, q: string): boolean {
   if (!q) return true;
   // Notes match as plain text; names and places also forgive typos.
   if (o.note.toLowerCase().includes(q.toLowerCase())) return true;
-  const s = bestScore(q, [o.species, o.sci ?? '', o.place, category(o.category).label]);
+  const s = bestScore(q, [o.place, ...o.entries.flatMap((e) => [e.species, e.sci ?? '', category(e.category).label])]);
   return s !== null && s <= 5;
 }
 
@@ -147,7 +147,7 @@ function render(): void {
   } else filterReporter = '';
   const byReporter = (o: Observation): boolean =>
     !filterReporter || (filterReporter === meId ? isMe(o.reporterId, me) : o.reporterId === filterReporter);
-  const shown = all.filter((o) => byReporter(o) && (!filterCat || o.category === filterCat) && matches(o, q));
+  const shown = all.filter((o) => byReporter(o) && (!filterCat || o.entries.some((e) => e.category === filterCat)) && matches(o, q));
   qs(root, '#j-count').textContent = shown.length === all.length
     ? `${all.length} דיווחים`
     : `${shown.length} מתוך ${all.length}`;

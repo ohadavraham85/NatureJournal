@@ -29,13 +29,14 @@ export function init(el: HTMLElement): void {
 
 export async function activate(): Promise<void> {
   const all = await listObservations();
-  const species = new Set(all.map((o) => o.species.trim()).filter(Boolean));
+  const species = new Set(all.flatMap((o) => o.entries.map((e) => e.species.trim())).filter(Boolean));
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
   const thisMonth = all.filter((o) => new Date(o.dateTime) >= monthStart).length;
   const counts = new Map<string, number>();
-  for (const o of all) counts.set(o.category, (counts.get(o.category) ?? 0) + 1);
+  // Per category: how many observations include at least one species of it.
+  for (const o of all) for (const cat of new Set(o.entries.map((e) => e.category))) counts.set(cat, (counts.get(cat) ?? 0) + 1);
 
   root.innerHTML = `
     <button type="button" class="new-report" id="h-new">

@@ -1,6 +1,7 @@
-/* views/form.ts — new/edit report. Starts from a photo: the first photo's
- * EXIF capture time and GPS position fill in the date and location; without
- * them, the current time and the device GPS are used instead. */
+/* views/form.ts — new/edit observation: where and when at the top, photos,
+ * then one or more species seen there. The first photo's EXIF capture time
+ * and GPS position fill in the date and location; without them, the current
+ * time and the device GPS are used instead. */
 
 import { CATEGORIES, category, categoryIcon, type CategoryId } from '../data/categories';
 import {
@@ -17,7 +18,8 @@ import { allTaxa, findTaxonByName, getTaxon, taxonName } from '../lib/catalog';
 import { wireCombo, type ComboItem } from '../lib/combo';
 import { confirmDialog, fmtCoords, fromLocalInputValue, toast, toLocalInputValue } from '../lib/ui';
 import { goBack, navigate } from '../lib/nav';
-import type { DateSource, LocationSource, Observation, Taxon } from '../types';
+import type { DateSource, LocationSource, Observation, SpeciesEntry, Taxon } from '../types';
+import { newEntry, obsTitle } from '../lib/observation';
 import type { ViewParams } from './view';
 import { getMe } from '../sync/state';
 
@@ -52,7 +54,7 @@ function blankDraft(): Observation {
   return {
     id: newId(), dateTime: now, dateSource: 'now',
     lat: null, lng: null, accuracy: null, locationSource: 'none', place: '',
-    category: '' as CategoryId, species: '', quantity: 1, uncertain: false, note: '',
+    entries: [newEntry()], note: '',
     photoIds: [], createdAt: now, updatedAt: now,
   };
 }
@@ -61,64 +63,48 @@ export function init(el: HTMLElement): void {
   root = el;
   root.innerHTML = `
     <form class="report-form" novalidate>
-      <div class="photo-strip" id="f-photos"></div>
-      <div class="photo-pick" id="f-photo-pick">
-        <button type="button" class="photo-pick-main" id="f-pick">
-          ${icon('camera', 40, 1.6)}
-          <strong>צילום או בחירת תמונה</strong>
-          <span>התאריך והמיקום יילקחו מהתמונה</span>
-        </button>
-      </div>
-      <input type="file" id="f-file" accept="image/*" multiple hidden>
-      <input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
-
-      <fieldset class="field">
-        <legend>קטגוריה</legend>
-        <div class="cat-picker" id="f-cats">
-          ${CATEGORIES.map((c) => `
-            <button type="button" class="cat-btn" data-cat="${c.id}" aria-pressed="false" style="--cat:${c.color};--cat-tint:${c.tint}">
-              <span class="cat-icon">${categoryIcon(c.id, 22)}</span>
-              <span class="cat-label">${c.label}</span>
-            </button>`).join('')}
-        </div>
-      </fieldset>
-
-      <div class="field">
-        <label for="f-species">שם המין</label>
-        <div class="combo"><input id="f-species" type="text" enterkeyhint="next" placeholder="מקלידים ובוחרים מהרשימה, למשל: שועל"></div>
-        <span class="sci-link" id="f-sci" hidden></span>
-      </div>
-
-      <div class="field-row">
-        <div class="qty">
-          <span class="qty-label" id="f-qty-label">כמות</span>
-          <button type="button" class="qty-btn" id="f-qty-minus" aria-label="פחות">−</button>
-          <input id="f-qty" type="number" inputmode="numeric" min="1" value="1" aria-labelledby="f-qty-label">
-          <button type="button" class="qty-btn" id="f-qty-plus" aria-label="יותר">+</button>
-        </div>
-        <label class="check"><input type="checkbox" id="f-uncertain"> לא בטוח בזיהוי</label>
-      </div>
-
-      <div class="where-when">
-        <div class="ww-row">
-          <span class="ww-icon">${icon('pin', 18)}</span>
-          <div class="ww-main">
-            <div class="combo combo-inline"><input id="f-place" type="text" placeholder="שם המקום" aria-label="שם המקום"></div>
-            <span class="ww-meta" id="f-coords"></span>
+      <section class="form-section">
+        <h3 class="form-section-title">${icon('pin', 18)} איפה ומתי</h3>
+        <div class="where-when">
+          <div class="ww-row">
+            <span class="ww-icon">${icon('pin', 18)}</span>
+            <div class="ww-main">
+              <div class="combo combo-inline"><input id="f-place" type="text" placeholder="שם המקום" aria-label="שם המקום"></div>
+              <span class="ww-meta" id="f-coords"></span>
+            </div>
+            <span class="ww-btns">
+              <button type="button" class="btn btn-sm btn-soft" id="f-map" title="בחירת מיקום במפה">${icon('map', 16)} במפה</button>
+              <button type="button" class="btn btn-sm btn-soft" id="f-gps" title="שימוש במיקום הנוכחי">${icon('crosshair', 16)} מיקום נוכחי</button>
+            </span>
           </div>
-          <span class="ww-btns">
-            <button type="button" class="btn btn-sm btn-soft" id="f-map" title="בחירת מיקום במפה">${icon('map', 16)} במפה</button>
-            <button type="button" class="btn btn-sm btn-soft" id="f-gps" title="שימוש במיקום הנוכחי">${icon('crosshair', 16)} מיקום נוכחי</button>
-          </span>
-        </div>
-        <div class="ww-row">
-          <span class="ww-icon">${icon('clock', 18)}</span>
-          <div class="ww-main">
-            <input id="f-date" type="datetime-local" aria-label="תאריך ושעה">
-            <span class="ww-meta" id="f-date-src"></span>
+          <div class="ww-row">
+            <span class="ww-icon">${icon('clock', 18)}</span>
+            <div class="ww-main">
+              <input id="f-date" type="datetime-local" aria-label="תאריך ושעה">
+              <span class="ww-meta" id="f-date-src"></span>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      <section class="form-section">
+        <div class="photo-strip" id="f-photos"></div>
+        <div class="photo-pick" id="f-photo-pick">
+          <button type="button" class="photo-pick-main" id="f-pick">
+            ${icon('camera', 36, 1.6)}
+            <strong>צילום או בחירת תמונה</strong>
+            <span>התאריך והמיקום יילקחו מהתמונה</span>
+          </button>
+        </div>
+        <input type="file" id="f-file" accept="image/*" multiple hidden>
+        <input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
+      </section>
+
+      <section class="form-section">
+        <h3 class="form-section-title">${icon('leaf', 18)} מה ראית</h3>
+        <div class="entries" id="f-entries"></div>
+        <button type="button" class="btn btn-soft add-entry" id="f-add-entry">${icon('plus', 18)} הוספת מין נוסף לתצפית</button>
+      </section>
 
       <div class="field">
         <label for="f-note">הערה</label>
@@ -144,39 +130,46 @@ export function init(el: HTMLElement): void {
     });
   }
 
-  qs(root, '#f-cats').addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('.cat-btn');
-    if (!btn) return;
-    if (draft.category !== btn.dataset.cat) unlinkTaxon();
-    draft.category = btn.dataset.cat as CategoryId;
-    paintCategory();
+  // Species entries — one card each; events delegated by data-entry id.
+  const entriesBox = qs(root, '#f-entries');
+  entriesBox.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const card = t.closest<HTMLElement>('[data-entry]');
+    const entry = card && draft.entries.find((x) => x.id === card.dataset.entry);
+    if (!card || !entry) return;
+    const cat = t.closest<HTMLElement>('[data-cat]');
+    if (cat) {
+      if (entry.category !== cat.dataset.cat) unlinkTaxon(entry, card);
+      entry.category = cat.dataset.cat as CategoryId;
+      paintEntryCategory(card, entry);
+    } else if (t.closest('[data-minus]')) setQty(entry, card, entry.quantity - 1);
+    else if (t.closest('[data-plus]')) setQty(entry, card, entry.quantity + 1);
+    else if (t.closest('[data-remove-entry]')) {
+      draft.entries = draft.entries.filter((x) => x !== entry);
+      renderEntries();
+    }
   });
-
-  const speciesInput = qs<HTMLInputElement>(root, '#f-species');
-  speciesInput.addEventListener('input', () => {
-    draft.species = speciesInput.value;
-    unlinkTaxon();
+  entriesBox.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    const card = t.closest<HTMLElement>('[data-entry]');
+    const entry = card && draft.entries.find((x) => x.id === card.dataset.entry);
+    if (!card || !entry) return;
+    if (t.classList.contains('e-species')) { entry.species = t.value; unlinkTaxon(entry, card); }
   });
-  wireCombo(speciesInput, {
-    scrollOnFocus: true,
-    getGroups: speciesGroups,
-    emptyText: 'אין התאמה — אפשר להשאיר את השם כפי שהוקלד',
-    onSelect: (item) => {
-      const taxon = item.data ? catalog.find((t) => t.id === Number(item.data)) : undefined;
-      if (taxon) linkTaxon(taxon);
-      else { draft.species = item.value; unlinkTaxon(); }
-      speciesInput.value = draft.species;
-    },
+  entriesBox.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    const card = t.closest<HTMLElement>('[data-entry]');
+    const entry = card && draft.entries.find((x) => x.id === card.dataset.entry);
+    if (!card || !entry) return;
+    if (t.classList.contains('e-qty')) setQty(entry, card, Number(t.value));
+    else if (t.classList.contains('e-uncertain')) entry.uncertain = t.checked;
   });
-
-  const qty = qs<HTMLInputElement>(root, '#f-qty');
-  const setQty = (n: number): void => { draft.quantity = Math.max(1, Math.round(n) || 1); qty.value = String(draft.quantity); };
-  qs(root, '#f-qty-minus').addEventListener('click', () => setQty(draft.quantity - 1));
-  qs(root, '#f-qty-plus').addEventListener('click', () => setQty(draft.quantity + 1));
-  qty.addEventListener('change', () => setQty(Number(qty.value)));
-
-  qs<HTMLInputElement>(root, '#f-uncertain').addEventListener('change', (e) => {
-    draft.uncertain = (e.target as HTMLInputElement).checked;
+  qs(root, '#f-add-entry').addEventListener('click', () => {
+    // A new species row starts in the same category as the last one.
+    const last = draft.entries[draft.entries.length - 1];
+    draft.entries.push(newEntry(last?.category ?? ''));
+    renderEntries();
+    root.querySelector<HTMLInputElement>(`[data-entry="${draft.entries[draft.entries.length - 1]!.id}"] .e-species`)?.focus();
   });
 
   const place = qs<HTMLInputElement>(root, '#f-place');
@@ -230,29 +223,28 @@ export async function activate(): Promise<void> {
   addedPhotoIds = [];
   placeTouched = false;
   const existing = editId ? await getObservation(editId) : undefined;
-  draft = existing ? { ...existing, photoIds: [...existing.photoIds] } : blankDraft();
+  draft = existing
+    ? { ...existing, photoIds: [...existing.photoIds], entries: existing.entries.map((e) => ({ ...e })) }
+    : blankDraft();
   if (existing) placeTouched = true;
   else if (prefill.prefillCategory) {
-    draft.category = prefill.prefillCategory as CategoryId;
-    draft.species = prefill.prefillSpecies ?? '';
+    const first = draft.entries[0]!;
+    first.category = prefill.prefillCategory as CategoryId;
+    first.species = prefill.prefillSpecies ?? '';
     const taxon = prefill.prefillTaxonId ? await getTaxon(prefill.prefillTaxonId) : undefined;
-    if (taxon) { draft.taxonId = taxon.id; draft.sci = taxon.sci; }
+    if (taxon) { first.taxonId = taxon.id; first.sci = taxon.sci; }
   }
 
   document.getElementById('topbar-title')!.textContent = existing ? 'עריכת דיווח' : 'דיווח חדש';
-  qs<HTMLInputElement>(root, '#f-species').value = draft.species;
-  qs<HTMLInputElement>(root, '#f-qty').value = String(draft.quantity);
-  qs<HTMLInputElement>(root, '#f-uncertain').checked = draft.uncertain;
   qs<HTMLInputElement>(root, '#f-place').value = draft.place;
   qs<HTMLTextAreaElement>(root, '#f-note').value = draft.note;
   qs(root, '#f-save').textContent = existing ? 'שמירת השינויים' : 'שמירת הדיווח';
-  paintCategory();
   paintPhotos();
   paintWhereWhen();
-  paintSci();
 
   [myPlaces, catalog] = await Promise.all([placeSuggestions(), allTaxa()]);
   mySpecies = new Map(await Promise.all(['', ...CATEGORIES.map((c) => c.id)].map(async (id) => [id, await speciesSuggestions(id || undefined)] as const)));
+  renderEntries();
 
   // A new report gets the current position right away, so it's ready even
   // without a photo; a photo with its own GPS replaces it.
@@ -334,19 +326,69 @@ function paintPhotos(): void {
   });
 }
 
-/* ---------- category & species ---------- */
+/* ---------- species entries ---------- */
 
-function paintCategory(): void {
-  root.querySelectorAll<HTMLElement>('.cat-btn').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.cat === draft.category));
+function renderEntries(): void {
+  const box = qs(root, '#f-entries');
+  const many = draft.entries.length > 1;
+  box.innerHTML = draft.entries.map((e, i) => `
+    <div class="entry-edit" data-entry="${e.id}">
+      ${many ? `<div class="entry-head"><span>מין ${i + 1}</span>
+        <button type="button" class="btn btn-sm btn-ghost-dark" data-remove-entry aria-label="הסרת המין">${icon('trash', 16)} הסרה</button></div>` : ''}
+      <div class="cat-row" role="group" aria-label="קטגוריה">
+        ${CATEGORIES.map((c) => `
+          <button type="button" class="cat-chip" data-cat="${c.id}" aria-pressed="false" style="--cat:${c.color};--cat-tint:${c.tint}">
+            <span class="cat-icon">${categoryIcon(c.id, 18)}</span>${c.short}
+          </button>`).join('')}
+      </div>
+      <div class="combo"><input class="e-species" type="text" enterkeyhint="next" aria-label="שם המין" placeholder="שם המין — מקלידים ובוחרים מהרשימה" value="${escapeHtml(e.species)}"></div>
+      <span class="sci-link" hidden></span>
+      <div class="field-row">
+        <div class="qty">
+          <span class="qty-label">כמות</span>
+          <button type="button" class="qty-btn" data-minus aria-label="פחות">−</button>
+          <input class="e-qty" type="number" inputmode="numeric" min="1" value="${e.quantity}" aria-label="כמות">
+          <button type="button" class="qty-btn" data-plus aria-label="יותר">+</button>
+        </div>
+        <label class="check"><input type="checkbox" class="e-uncertain"${e.uncertain ? ' checked' : ''}> לא בטוח בזיהוי</label>
+      </div>
+    </div>`).join('');
+  box.querySelectorAll<HTMLElement>('[data-entry]').forEach((card) => {
+    const entry = draft.entries.find((x) => x.id === card.dataset.entry)!;
+    paintEntryCategory(card, entry);
+    paintSci(card, entry);
+    const input = card.querySelector<HTMLInputElement>('.e-species')!;
+    wireCombo(input, {
+      scrollOnFocus: true,
+      getGroups: () => speciesGroups(entry),
+      emptyText: 'אין התאמה — אפשר להשאיר את השם כפי שהוקלד',
+      onSelect: (item) => {
+        const taxon = item.data ? catalog.find((t) => t.id === Number(item.data)) : undefined;
+        if (taxon) linkTaxon(entry, card, taxon);
+        else { entry.species = item.value; unlinkTaxon(entry, card); }
+        input.value = entry.species;
+      },
+    });
   });
 }
 
-/** Pick-list groups for the species field: my past names first, then the
- * catalog — the chosen category's species, or every category if none is
- * chosen yet (picking one then sets the category too). */
-function speciesGroups(): Array<{ title: string; items: ComboItem[]; limit: number; emptyLimit: number }> {
-  const cat = draft.category;
+function paintEntryCategory(card: HTMLElement, entry: SpeciesEntry): void {
+  card.querySelectorAll<HTMLElement>('[data-cat]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.cat === entry.category));
+  });
+  card.querySelector<HTMLElement>(`[data-cat="${entry.category}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function setQty(entry: SpeciesEntry, card: HTMLElement, n: number): void {
+  entry.quantity = Math.max(1, Math.round(n) || 1);
+  card.querySelector<HTMLInputElement>('.e-qty')!.value = String(entry.quantity);
+}
+
+/** Pick-list groups for a species field: my past names first, then the
+ * catalog — the entry's category, or every category if none is chosen yet
+ * (picking one then sets the category too). */
+function speciesGroups(entry: SpeciesEntry): Array<{ title: string; items: ComboItem[]; limit: number; emptyLimit: number }> {
+  const cat = entry.category;
   const mine = mySpecies.get(cat) ?? [];
   const mineSet = new Set(mine);
   return [
@@ -379,28 +421,28 @@ function catalogItemsFor(cat: string): ComboItem[] {
   return items;
 }
 
-function linkTaxon(t: Taxon): void {
-  if (draft.category !== t.category) {
-    draft.category = t.category;
-    paintCategory();
+function linkTaxon(entry: SpeciesEntry, card: HTMLElement, t: Taxon): void {
+  if (entry.category !== t.category) {
+    entry.category = t.category;
+    paintEntryCategory(card, entry);
   }
-  draft.species = taxonName(t);
-  draft.taxonId = t.id;
-  draft.sci = t.sci;
-  paintSci();
+  entry.species = taxonName(t);
+  entry.taxonId = t.id;
+  entry.sci = t.sci;
+  paintSci(card, entry);
 }
 
-function unlinkTaxon(): void {
-  if (draft.taxonId === undefined && draft.sci === undefined) return;
-  delete draft.taxonId;
-  delete draft.sci;
-  paintSci();
+function unlinkTaxon(entry: SpeciesEntry, card: HTMLElement): void {
+  if (entry.taxonId === undefined && entry.sci === undefined) return;
+  delete entry.taxonId;
+  delete entry.sci;
+  paintSci(card, entry);
 }
 
-function paintSci(): void {
-  const el = qs(root, '#f-sci');
-  el.hidden = !draft.sci;
-  el.innerHTML = draft.sci ? `${icon('check', 14, 2.4)} מהמאגר · <span dir="ltr">${escapeHtml(draft.sci)}</span>` : '';
+function paintSci(card: HTMLElement, entry: SpeciesEntry): void {
+  const el = card.querySelector<HTMLElement>('.sci-link')!;
+  el.hidden = !entry.sci;
+  el.innerHTML = entry.sci ? `${icon('check', 14, 2.4)} מהמאגר · <span dir="ltr">${escapeHtml(entry.sci)}</span>` : '';
 }
 
 /* ---------- where & when ---------- */
@@ -468,19 +510,27 @@ function paintWhereWhen(): void {
 /* ---------- save / cancel ---------- */
 
 async function save(): Promise<void> {
-  if (!draft.category) {
-    toast('יש לבחור קטגוריה', true);
-    qs(root, '#f-cats').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Drop species rows left completely empty (but keep at least one).
+  const filled = draft.entries.filter((e) => e.species.trim() || e.category);
+  draft.entries = filled.length ? filled : draft.entries.slice(0, 1);
+  const noCat = draft.entries.findIndex((e) => !e.category);
+  if (noCat >= 0) {
+    renderEntries();
+    toast(draft.entries.length > 1 ? `יש לבחור קטגוריה למין ${noCat + 1}` : 'יש לבחור קטגוריה', true);
+    root.querySelector(`[data-entry="${draft.entries[noCat]!.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
-  if (!draft.species.trim() && !draft.photoIds.length) {
+  if (!draft.entries.some((e) => e.species.trim()) && !draft.photoIds.length) {
     toast('יש להוסיף תמונה או שם מין', true);
     return;
   }
   // A typed name that exactly matches a catalog species gets linked to it.
-  if (!draft.taxonId && draft.species.trim()) {
-    const t = await findTaxonByName(draft.category, draft.species);
-    if (t) { draft.taxonId = t.id; draft.sci = t.sci; }
+  for (const e of draft.entries) {
+    e.species = e.species.trim();
+    if (!e.taxonId && e.species) {
+      const t = await findTaxonByName(e.category, e.species);
+      if (t) { e.taxonId = t.id; e.sci = t.sci; }
+    }
   }
   if (!editId) {
     const me = await getMe();
@@ -491,9 +541,9 @@ async function save(): Promise<void> {
   const btn = qs<HTMLButtonElement>(root, '#f-save');
   btn.disabled = true;
   try {
-    await saveObservation({ ...draft, species: draft.species.trim(), place: draft.place.trim(), note: draft.note.trim() });
+    await saveObservation({ ...draft, place: draft.place.trim(), note: draft.note.trim() });
     addedPhotoIds = [];
-    toast(editId ? 'השינויים נשמרו' : `נשמר: ${draft.species.trim() || category(draft.category).label}`);
+    toast(editId ? 'השינויים נשמרו' : `נשמר: ${obsTitle(draft)}`);
     if (editId) goBack();
     else navigate('journal', undefined, true); // back from the journal shouldn't reopen a blank form
   } catch (err) {
@@ -505,7 +555,8 @@ async function save(): Promise<void> {
 }
 
 async function cancel(): Promise<void> {
-  const dirty = addedPhotoIds.length > 0 || (!editId && (draft.species.trim() || draft.note.trim()));
+  const typed = draft.entries.some((e) => e.species.trim()) || draft.note.trim();
+  const dirty = addedPhotoIds.length > 0 || (!editId && typed);
   if (dirty && !(await confirmDialog('לצאת בלי לשמור? מה שהוזן לא יישמר.', 'יציאה בלי שמירה'))) return;
   goBack();
 }

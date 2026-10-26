@@ -37,6 +37,10 @@
   Storage (curl works) — relay them through curl in Playwright routes. Use
   throwaway `nj-` codes and delete their docs/objects afterwards; never list
   `households/` (other people's journals).
+- An observation = place + time + photos + `entries: SpeciesEntry[]` (each
+  with its own category/species/quantity/uncertain). `lib/observation.ts`
+  converts the old one-species shape (Dexie v3 upgrade, backups, synced docs
+  from older app versions).
 - Settings are split into sections (`views/settings.ts`); appearance lives in
   `lib/theme.ts` + the boot script in `index.html`; backup/CSV in `lib/backup.ts`.
 - Roadmap: done — report form, journal, offline PWA, species catalog, settings

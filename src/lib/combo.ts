@@ -140,7 +140,8 @@ export function wireCombo(input: HTMLInputElement, opts: ComboOptions): { close:
   list.addEventListener('pointerdown', (e) => e.preventDefault());
   list.addEventListener('click', (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>('.combo-row');
-    if (row) pick(Number(row.dataset.i));
+    // A tap anywhere else in the list (e.g. the "no match" note) just closes it.
+    if (row) pick(Number(row.dataset.i)); else close();
   });
   toggle.addEventListener('pointerdown', (e) => e.preventDefault());
   toggle.addEventListener('click', () => {

@@ -19,14 +19,8 @@ export interface Observation {
   locationSource: LocationSource;
   /** Free-text place name ("נחל עמוד"), filled from reverse geocoding when online. */
   place: string;
-  category: CategoryId;
-  species: string;
-  /** Scientific name, when the species was picked from the species catalog. */
-  sci?: string;
-  /** iNaturalist taxon id, when picked from the species catalog. */
-  taxonId?: number;
-  quantity: number;
-  uncertain: boolean;
+  /** The species seen — one observation (place + time) can hold several. */
+  entries: SpeciesEntry[];
   note: string;
   /** Media ids, in display order — the first is the cover photo. */
   photoIds: string[];
@@ -37,6 +31,19 @@ export interface Observation {
   reporterName?: string;
   /** Tombstone: deleted reports stay as a marker so the deletion syncs to other devices. */
   deleted?: boolean;
+}
+
+/** One species within an observation. */
+export interface SpeciesEntry {
+  id: string;
+  category: CategoryId;
+  species: string;
+  /** Scientific name, when the species was picked from the species catalog. */
+  sci?: string;
+  /** iNaturalist taxon id, when picked from the species catalog. */
+  taxonId?: number;
+  quantity: number;
+  uncertain: boolean;
 }
 
 /** Someone reporting into a shared journal. */

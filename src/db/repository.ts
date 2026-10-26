@@ -95,9 +95,11 @@ export async function deleteObservation(id: string): Promise<void> {
 export async function speciesSuggestions(categoryId?: string): Promise<string[]> {
   const counts = new Map<string, number>();
   for (const o of await listObservations()) {
-    if (categoryId && o.category !== categoryId) continue;
-    const name = o.species.trim();
-    if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    for (const e of o.entries) {
+      if (categoryId && e.category !== categoryId) continue;
+      const name = e.species.trim();
+      if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'he')).map(([n]) => n);
 }

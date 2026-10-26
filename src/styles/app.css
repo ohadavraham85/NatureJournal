@@ -554,3 +554,48 @@ body[data-view="form"] .tabbar, body[data-view="detail"] .tabbar, body[data-view
 .qr-hint { position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 48px); left: 16px; right: 16px; margin: 0; color: #fff; text-align: center; font-size: 1rem; text-shadow: 0 1px 3px #000; }
 .qr-close { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 14px); right: 14px; width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(0,0,0,.5); color: #fff; display: flex; align-items: center; justify-content: center; }
 .join-box > .btn { align-self: flex-start; }
+
+/* ---------- multi-species form & detail ---------- */
+.form-section { display: flex; flex-direction: column; gap: 8px; }
+.form-section-title { display: flex; align-items: center; gap: 6px; font-size: 1rem; }
+.form-section .photo-pick-main { min-height: 120px; }
+.entries { display: flex; flex-direction: column; gap: 10px; }
+.entry-edit {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.entry-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; color: var(--olive-dark); }
+.entry-head .btn { min-height: 32px; }
+.cat-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px; }
+.cat-row::-webkit-scrollbar { display: none; }
+.cat-chip {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 4px 12px 4px 6px;
+  border: 1.5px solid var(--line-strong); border-radius: 12px; background: var(--card); color: var(--ink);
+  font-size: 0.875rem; font-weight: var(--weight-medium); white-space: nowrap;
+}
+.cat-chip .cat-icon { width: 30px; height: 30px; border-radius: 8px; }
+.cat-chip[aria-pressed="true"] { background: var(--cat); border-color: var(--cat); color: #fff; }
+.cat-chip[aria-pressed="true"] .cat-icon { background: rgba(255,255,255,.2); color: #fff; }
+.entry-edit .combo > input {
+  width: 100%; min-height: 48px; border: 1.5px solid var(--line-strong); border-radius: 12px; padding: 10px 12px;
+  background: var(--card); font-size: 1rem;
+}
+.entry-edit .combo > input:focus { border-color: var(--olive-line); outline: 0; }
+.add-entry { align-self: flex-start; }
+
+.detail-where { padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 4px; max-width: 720px; width: 100%; margin: 0 auto; }
+.detail-place { display: flex; align-items: flex-start; gap: 8px; color: var(--olive); }
+.detail-place strong { display: block; font-size: 1.25rem; color: var(--ink); }
+.detail-place .coords { font-size: 0.8125rem; }
+.detail-when { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 0.9375rem; }
+.detail-heading { font-size: 1.0625rem; }
+.entry-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.entry-card {
+  display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px;
+}
+.entry-card .cat-icon { width: 42px; height: 42px; }
+.entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.entry-text strong { font-size: 1.0625rem; }
+.entry-sci { font-style: italic; color: var(--ink-soft); text-align: right; }
+.strip-tags .cat-tag { background: var(--cat); }
