@@ -44,7 +44,7 @@ const DATE_SOURCE_LABEL: Record<DateSource, string> = {
   exif: 'מהתמונה', file: 'מתאריך הקובץ', now: 'עכשיו', manual: 'הוזן ידנית',
 };
 const LOC_SOURCE_LABEL: Record<LocationSource, string> = {
-  exif: 'מהתמונה', gps: 'מיקום נוכחי', manual: 'הוזן ידנית', none: '',
+  exif: 'מהתמונה', gps: 'מיקום נוכחי', manual: 'נבחר ידנית', none: '',
 };
 
 function blankDraft(): Observation {
@@ -106,7 +106,10 @@ export function init(el: HTMLElement): void {
             <div class="combo combo-inline"><input id="f-place" type="text" placeholder="שם המקום" aria-label="שם המקום"></div>
             <span class="ww-meta" id="f-coords"></span>
           </div>
-          <button type="button" class="btn btn-sm btn-soft" id="f-gps" title="שימוש במיקום הנוכחי">${icon('crosshair', 16)} מיקום נוכחי</button>
+          <span class="ww-btns">
+            <button type="button" class="btn btn-sm btn-soft" id="f-map" title="בחירת מיקום במפה">${icon('map', 16)} במפה</button>
+            <button type="button" class="btn btn-sm btn-soft" id="f-gps" title="שימוש במיקום הנוכחי">${icon('crosshair', 16)} מיקום נוכחי</button>
+          </span>
         </div>
         <div class="ww-row">
           <span class="ww-icon">${icon('clock', 18)}</span>
@@ -185,6 +188,7 @@ export function init(el: HTMLElement): void {
   });
 
   qs(root, '#f-gps').addEventListener('click', () => void useCurrentLocation(true));
+  qs(root, '#f-map').addEventListener('click', () => void chooseOnMap());
 
   const date = qs<HTMLInputElement>(root, '#f-date');
   date.addEventListener('change', () => {
@@ -421,6 +425,21 @@ async function useCurrentLocation(userAsked: boolean): Promise<void> {
     toast('לא ניתן לקבל מיקום. כדאי לבדוק שהרשאת המיקום פעילה.', true);
   }
   paintWhereWhen();
+}
+
+async function chooseOnMap(): Promise<void> {
+  const mySession = session;
+  const { pickLocation } = await import('../lib/location-picker');
+  const current = draft.lat != null && draft.lng != null ? { lat: draft.lat, lng: draft.lng } : null;
+  const picked = await pickLocation(current);
+  if (!picked || mySession !== session) return;
+  draft.lat = picked.lat;
+  draft.lng = picked.lng;
+  draft.accuracy = null;
+  draft.locationSource = 'manual';
+  placeTouched = false;
+  paintWhereWhen();
+  void fillPlaceName();
 }
 
 async function fillPlaceName(): Promise<void> {
