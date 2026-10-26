@@ -12,6 +12,8 @@ export interface ViewParams {
   /** journal: pre-applied category filter / search text. */
   category?: string;
   search?: string;
+  /** settings: which section to open (absent = the section list). */
+  section?: string;
 }
 
 export interface View {

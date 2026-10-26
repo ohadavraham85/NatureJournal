@@ -11,7 +11,9 @@ import { hydrateIcons, icon } from './lib/icons';
 import { registerNav } from './lib/nav';
 import { refreshCatalogIfNeeded } from './lib/catalog';
 import { setupInstallPrompt } from './lib/install';
+import { initTheme } from './lib/theme';
 
+initTheme();
 setupInstallPrompt();
 import { setupWhatsNewButton, unseenChangelog, changelogEntriesHtml, markChangelogSeen, openWhatsNew } from './lib/whats-new';
 import type { View, ViewParams } from './views/view';
@@ -50,7 +52,8 @@ let currentView: string | null = null;
  * lets goBack() fall back to home instead of leaving the app. */
 let navDepth = 0;
 
-interface NavState { view: string; scrollTop: number }
+/** `params` lets back/forward reopen a screen as it was (e.g. which settings section). */
+interface NavState { view: string; scrollTop: number; params?: ViewParams }
 
 function mainScrollTop(): number {
   return document.getElementById('main')?.scrollTop ?? 0;
@@ -63,7 +66,8 @@ async function showView(name: string, params?: ViewParams, mode: 'push' | 'repla
   if (!VIEWS[name]) name = HOME_VIEW;
 
   if (mode === 'push' && currentView) {
-    const leavingState: NavState = { view: currentView, scrollTop: mainScrollTop() };
+    const prev = history.state as NavState | null;
+    const leavingState: NavState = { view: currentView, scrollTop: mainScrollTop(), params: prev?.params };
     history.replaceState(leavingState, '', location.hash || `#${currentView}`);
   }
 
@@ -82,13 +86,17 @@ async function showView(name: string, params?: ViewParams, mode: 'push' | 'repla
   updateChrome(name);
 
   if (mode === 'push') {
-    history.pushState({ view: name, scrollTop: 0 } satisfies NavState, '', `#${name}`);
+    history.pushState({ view: name, scrollTop: 0, params } satisfies NavState, '', `#${name}`);
     navDepth++;
   } else if (mode === 'replace') {
-    history.replaceState({ view: name, scrollTop: 0 } satisfies NavState, '', `#${name}`);
+    history.replaceState({ view: name, scrollTop: 0, params } satisfies NavState, '', `#${name}`);
   }
 
   if (mode !== 'pop') VIEWS[name]!.setParams?.(params ?? {});
+  else if (name === 'settings' || name === 'detail') {
+    // Screens whose content depends on their params: restore what this entry showed.
+    VIEWS[name]!.setParams?.((history.state as NavState | null)?.params ?? {});
+  }
   await VIEWS[name]!.activate();
 
   const main = document.getElementById('main')!;

@@ -10,7 +10,21 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <link id="app-font" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <script>
+    // Applies Settings ← עיצוב before first paint (written by src/lib/theme.ts).
+    try {
+      var r = JSON.parse(localStorage.getItem('nj-appearance-resolved') || 'null');
+      if (r) {
+        var root = document.documentElement;
+        for (var k in r.vars) root.style.setProperty(k, r.vars[k]);
+        root.style.fontSize = r.size + '%';
+        if (r.dark) root.setAttribute('data-dark', '');
+        if (r.fontHref) document.getElementById('app-font').href = r.fontHref;
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', r.themeColor);
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <header class="topbar">
