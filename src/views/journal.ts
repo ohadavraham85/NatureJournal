@@ -68,7 +68,7 @@ export async function activate(): Promise<void> {
 
 function matches(o: Observation, q: string): boolean {
   if (!q) return true;
-  return [o.species, o.place, o.note, category(o.category).label].some((f) => f.toLowerCase().includes(q));
+  return [o.species, o.sci ?? '', o.place, o.note, category(o.category).label].some((f) => f.toLowerCase().includes(q));
 }
 
 function render(): void {

@@ -21,6 +21,10 @@ export interface Observation {
   place: string;
   category: CategoryId;
   species: string;
+  /** Scientific name, when the species was picked from the species catalog. */
+  sci?: string;
+  /** iNaturalist taxon id, when picked from the species catalog. */
+  taxonId?: number;
   quantity: number;
   uncertain: boolean;
   note: string;
@@ -47,4 +51,21 @@ export interface MediaRecord {
 export interface SettingRow {
   key: string;
   value: unknown;
+}
+
+/** One species from the downloaded catalog (iNaturalist observations in Israel). */
+export interface Taxon {
+  /** iNaturalist taxon id. */
+  id: number;
+  category: CategoryId;
+  /** Hebrew common name — '' when iNaturalist has none. */
+  he: string;
+  /** English common name, when known. */
+  en: string;
+  sci: string;
+  /** How many research-grade observations it has in Israel — a rough "how common". */
+  count: number;
+  photo: string;
+  photoMedium: string;
+  wiki: string;
 }

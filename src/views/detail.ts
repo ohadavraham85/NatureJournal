@@ -4,6 +4,9 @@ import { category, categoryIcon } from '../data/categories';
 import { deleteObservation, getObservation } from '../db/repository';
 import { displayName } from '../lib/obs-card';
 import { photoUrl } from '../lib/media-url';
+import { findTaxonByName, getTaxon } from '../lib/catalog';
+import { openSpeciesCard } from '../lib/species-info';
+import { listObservations } from '../db/repository';
 import { escapeHtml } from '../lib/escape';
 import { icon } from '../lib/icons';
 import { confirmDialog, fmtCoords, fmtDateTime, showImageModal, toast } from '../lib/ui';
@@ -19,7 +22,8 @@ export function init(el: HTMLElement): void {
     const t = e.target as HTMLElement;
     const img = t.closest<HTMLImageElement>('.detail-photos img');
     if (img?.src) { showImageModal(img.src); return; }
-    if (t.closest('#d-edit')) navigate('form', { editId: viewId });
+    if (t.closest('#d-info')) void openInfo();
+    else if (t.closest('#d-edit')) navigate('form', { editId: viewId });
     else if (t.closest('#d-delete')) void remove();
   });
 }
@@ -45,6 +49,7 @@ export async function activate(): Promise<void> {
       <div class="detail-body">
         <div class="detail-title">
           <h2>${escapeHtml(displayName(o))}</h2>
+          ${o.sci ? `<p class="detail-sci" dir="ltr">${escapeHtml(o.sci)}</p>` : ''}
           <span class="cat-tag">${categoryIcon(c.id, 14, 2)} ${c.label}</span>
         </div>
         ${o.uncertain ? `<p class="uncertain-note">${icon('question', 18)} לא בטוח בזיהוי</p>` : ''}
@@ -54,6 +59,7 @@ export async function activate(): Promise<void> {
           <div><dt>כמות</dt><dd>${o.quantity}</dd></div>
         </dl>
         ${o.note ? `<div class="detail-note">${escapeHtml(o.note).replace(/\n/g, '<br>')}</div>` : ''}
+        ${o.species.trim() ? `<button type="button" class="btn btn-soft" id="d-info">${icon('info', 18)} מידע על המין</button>` : ''}
         <div class="detail-actions">
           <button type="button" class="btn btn-primary" id="d-edit">${icon('edit', 18)} עריכה</button>
           <button type="button" class="btn btn-danger" id="d-delete">${icon('trash', 18)} מחיקה</button>
@@ -63,6 +69,15 @@ export async function activate(): Promise<void> {
   root.querySelectorAll<HTMLImageElement>('img[data-full]').forEach((img) => {
     void photoUrl(img.dataset.full!).then((url) => { if (url) img.src = url; });
   });
+}
+
+async function openInfo(): Promise<void> {
+  const o = await getObservation(viewId);
+  if (!o) return;
+  const taxon = o.taxonId ? await getTaxon(o.taxonId) : await findTaxonByName(o.category, o.species);
+  const name = o.species.trim();
+  const myCount = (await listObservations()).filter((x) => x.category === o.category && x.species.trim() === name).length;
+  openSpeciesCard({ name, categoryId: o.category, taxon, myCount });
 }
 
 async function remove(): Promise<void> {

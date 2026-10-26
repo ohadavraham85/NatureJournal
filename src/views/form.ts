@@ -13,13 +13,15 @@ import { currentPosition, reverseGeocode } from '../lib/geo';
 import { icon } from '../lib/icons';
 import { escapeHtml } from '../lib/escape';
 import { qs } from '../lib/dom';
+import { findTaxonByName, getTaxon, searchTaxa, taxaInCategory, taxonName } from '../lib/catalog';
 import { confirmDialog, fmtCoords, fromLocalInputValue, toast, toLocalInputValue } from '../lib/ui';
 import { goBack, navigate } from '../lib/nav';
-import type { DateSource, LocationSource, Observation } from '../types';
+import type { DateSource, LocationSource, Observation, Taxon } from '../types';
 import type { ViewParams } from './view';
 
 let root: HTMLElement;
 let editId: string | undefined;
+let prefill: Pick<ViewParams, 'prefillCategory' | 'prefillSpecies' | 'prefillTaxonId'> = {};
 
 /** The report being composed. */
 let draft: Observation;
@@ -28,6 +30,8 @@ let addedPhotoIds: string[] = [];
 /** True once the user typed a place name themselves, so a later reverse-geocode doesn't overwrite it. */
 let placeTouched = false;
 let allSpecies: string[] = [];
+/** The chosen category's species catalog (downloaded from iNaturalist). */
+let catalog: Taxon[] = [];
 let saving = false;
 /** Bumped on every reset so a slow GPS fix from an earlier form session is ignored. */
 let session = 0;
@@ -78,6 +82,7 @@ export function init(el: HTMLElement): void {
       <div class="field">
         <label for="f-species">שם המין</label>
         <input id="f-species" type="text" autocomplete="off" enterkeyhint="next" placeholder="למשל: שועל מצוי">
+        <span class="sci-link" id="f-sci" hidden></span>
         <div class="suggest" id="f-suggest"></div>
       </div>
 
@@ -137,17 +142,24 @@ export function init(el: HTMLElement): void {
   qs(root, '#f-cats').addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('.cat-btn');
     if (!btn) return;
+    if (draft.category !== btn.dataset.cat) unlinkTaxon();
     draft.category = btn.dataset.cat as CategoryId;
     paintCategory();
     void refreshSuggestions();
   });
 
   const speciesInput = qs<HTMLInputElement>(root, '#f-species');
-  speciesInput.addEventListener('input', () => { draft.species = speciesInput.value; paintSuggestions(); });
+  speciesInput.addEventListener('input', () => {
+    draft.species = speciesInput.value;
+    unlinkTaxon();
+    paintSuggestions();
+  });
   qs(root, '#f-suggest').addEventListener('click', (e) => {
     const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-name]');
     if (!chip) return;
-    draft.species = chip.dataset.name!;
+    const taxon = chip.dataset.taxon ? catalog.find((t) => t.id === Number(chip.dataset.taxon)) : undefined;
+    if (taxon) linkTaxon(taxon);
+    else { draft.species = chip.dataset.name!; unlinkTaxon(); }
     speciesInput.value = draft.species;
     paintSuggestions();
   });
@@ -198,6 +210,7 @@ export function init(el: HTMLElement): void {
 
 export function setParams(params: ViewParams): void {
   editId = params.editId;
+  prefill = { prefillCategory: params.prefillCategory, prefillSpecies: params.prefillSpecies, prefillTaxonId: params.prefillTaxonId };
 }
 
 export async function activate(): Promise<void> {
@@ -208,6 +221,12 @@ export async function activate(): Promise<void> {
   const existing = editId ? await getObservation(editId) : undefined;
   draft = existing ? { ...existing, photoIds: [...existing.photoIds] } : blankDraft();
   if (existing) placeTouched = true;
+  else if (prefill.prefillCategory) {
+    draft.category = prefill.prefillCategory as CategoryId;
+    draft.species = prefill.prefillSpecies ?? '';
+    const taxon = prefill.prefillTaxonId ? await getTaxon(prefill.prefillTaxonId) : undefined;
+    if (taxon) { draft.taxonId = taxon.id; draft.sci = taxon.sci; }
+  }
 
   document.getElementById('topbar-title')!.textContent = existing ? 'עריכת דיווח' : 'דיווח חדש';
   qs<HTMLInputElement>(root, '#f-species').value = draft.species;
@@ -219,6 +238,7 @@ export async function activate(): Promise<void> {
   paintCategory();
   paintPhotos();
   paintWhereWhen();
+  paintSci();
 
   qs(root, '#f-places').innerHTML = (await placeSuggestions()).map((p) => `<option value="${escapeHtml(p)}"></option>`).join('');
   await refreshSuggestions();
@@ -316,16 +336,48 @@ async function refreshSuggestions(): Promise<void> {
   const inCat = draft.category ? await speciesSuggestions(draft.category) : [];
   const all = await speciesSuggestions();
   allSpecies = [...new Set([...inCat, ...all])];
+  catalog = draft.category ? await taxaInCategory(draft.category) : [];
   paintSuggestions();
 }
 
 function paintSuggestions(): void {
   const box = qs(root, '#f-suggest');
   const q = draft.species.trim();
-  const matches = (q ? allSpecies.filter((n) => n.includes(q) && n !== q) : allSpecies).slice(0, 6);
-  if (!matches.length) { box.innerHTML = ''; return; }
-  box.innerHTML = `<span class="suggest-label">${q ? 'מהדיווחים שלך:' : 'מינים אחרונים:'}</span>` +
-    matches.map((n) => `<button type="button" class="chip" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('');
+  const mine = (q ? allSpecies.filter((n) => n.includes(q) && n !== q) : allSpecies).slice(0, q ? 4 : 6);
+  // Catalog suggestions: matches while typing, or the most common species
+  // of the category when nothing is typed and there are no past reports.
+  const fromCatalog = draft.taxonId || (!q && mine.length) ? [] : searchTaxa(catalog, q, q ? 8 : 6)
+    .filter((t) => !mine.includes(taxonName(t)) && taxonName(t) !== q);
+  let html = '';
+  if (mine.length) {
+    html += `<span class="suggest-label">${q ? 'מהדיווחים שלך:' : 'מינים אחרונים:'}</span>` +
+      mine.map((n) => `<button type="button" class="chip" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('');
+  }
+  if (fromCatalog.length) {
+    html += `<span class="suggest-label suggest-break">${q ? 'מהמאגר:' : 'נפוצים בישראל:'}</span>` +
+      fromCatalog.map((t) => `<button type="button" class="chip chip-taxon" data-name="${escapeHtml(taxonName(t))}" data-taxon="${t.id}">${escapeHtml(taxonName(t))}${taxonName(t) !== t.sci ? `<small dir="ltr">${escapeHtml(t.sci)}</small>` : ''}</button>`).join('');
+  }
+  box.innerHTML = html;
+}
+
+function linkTaxon(t: Taxon): void {
+  draft.species = taxonName(t);
+  draft.taxonId = t.id;
+  draft.sci = t.sci;
+  paintSci();
+}
+
+function unlinkTaxon(): void {
+  if (draft.taxonId === undefined && draft.sci === undefined) return;
+  delete draft.taxonId;
+  delete draft.sci;
+  paintSci();
+}
+
+function paintSci(): void {
+  const el = qs(root, '#f-sci');
+  el.hidden = !draft.sci;
+  el.innerHTML = draft.sci ? `${icon('check', 14, 2.4)} מהמאגר · <span dir="ltr">${escapeHtml(draft.sci)}</span>` : '';
 }
 
 /* ---------- where & when ---------- */
@@ -386,6 +438,11 @@ async function save(): Promise<void> {
   if (!draft.species.trim() && !draft.photoIds.length) {
     toast('יש להוסיף תמונה או שם מין', true);
     return;
+  }
+  // A typed name that exactly matches a catalog species gets linked to it.
+  if (!draft.taxonId && draft.species.trim()) {
+    const t = await findTaxonByName(draft.category, draft.species);
+    if (t) { draft.taxonId = t.id; draft.sci = t.sci; }
   }
   saving = true;
   const btn = qs<HTMLButtonElement>(root, '#f-save');

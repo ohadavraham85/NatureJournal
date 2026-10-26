@@ -9,6 +9,7 @@ import { toast, showModal } from './lib/ui';
 import { qs } from './lib/dom';
 import { hydrateIcons, icon } from './lib/icons';
 import { registerNav } from './lib/nav';
+import { refreshCatalogIfNeeded } from './lib/catalog';
 import { setupWhatsNewButton, unseenChangelog, changelogEntriesHtml, markChangelogSeen, openWhatsNew } from './lib/whats-new';
 import type { View, ViewParams } from './views/view';
 
@@ -268,6 +269,10 @@ async function init(): Promise<void> {
 
   // A reload always lands on Home: per-view params live only in memory.
   await showView(HOME_VIEW, undefined, 'replace');
+
+  // Species catalog: downloaded on first run, refreshed when stale.
+  void refreshCatalogIfNeeded();
+  window.addEventListener('online', () => void refreshCatalogIfNeeded());
 }
 
 void init().catch((err: unknown) => {
