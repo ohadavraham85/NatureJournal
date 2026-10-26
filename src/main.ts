@@ -10,6 +10,9 @@ import { qs } from './lib/dom';
 import { hydrateIcons, icon } from './lib/icons';
 import { registerNav } from './lib/nav';
 import { refreshCatalogIfNeeded } from './lib/catalog';
+import { setupInstallPrompt } from './lib/install';
+
+setupInstallPrompt();
 import { setupWhatsNewButton, unseenChangelog, changelogEntriesHtml, markChangelogSeen, openWhatsNew } from './lib/whats-new';
 import type { View, ViewParams } from './views/view';
 
